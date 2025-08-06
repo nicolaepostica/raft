@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.90"
+
+[workspace.dependencies]
+raft-doc = { path = "crates/raft-doc" }
+raft-search = { path = "crates/raft-search" }
+raft-catalog = { path = "crates/raft-catalog" }
+raft-engine = { path = "crates/raft-engine" }
+raft-store = { path = "crates/raft-store" }
+raft-render = { path = "crates/raft-render" }
+raft-ui = { path = "crates/raft-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+proptest = "1"
+egui = "0.37"
+eframe = "0.37"
+egui_kittest = "0.37"
+image = { version = "0.25", default-features = false, features = ["webp", "png", "jpeg"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unreachable = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+
+[profile.dev.package."*"]
+opt-level = 2
