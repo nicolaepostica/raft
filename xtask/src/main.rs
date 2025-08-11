@@ -19,10 +19,23 @@ const LAYERS: &[(&str, u8)] = &[
 ];
 
 /// GUI crates that only layer 6 and above may depend on.
-const GUI_CRATES: &[&str] = &["egui", "eframe", "winit", "rfd", "egui_kittest", "egui_extras"];
+const GUI_CRATES: &[&str] = &[
+    "egui",
+    "eframe",
+    "winit",
+    "rfd",
+    "egui_kittest",
+    "egui_extras",
+];
 
 /// Crates that must keep compiling for `wasm32-unknown-unknown`.
-const WASM_CRATES: &[&str] = &["raft-doc", "raft-search", "raft-catalog", "raft-engine", "raft-ui"];
+const WASM_CRATES: &[&str] = &[
+    "raft-doc",
+    "raft-search",
+    "raft-catalog",
+    "raft-engine",
+    "raft-ui",
+];
 
 fn main() -> Result<()> {
     let task = std::env::args().nth(1).unwrap_or_else(|| "ci".to_owned());
@@ -62,7 +75,14 @@ fn fmt() -> Result<()> {
 }
 
 fn clippy() -> Result<()> {
-    cargo(&["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])
+    cargo(&[
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings",
+    ])
 }
 
 fn test() -> Result<()> {
