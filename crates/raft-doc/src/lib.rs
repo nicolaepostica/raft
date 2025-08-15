@@ -8,13 +8,16 @@ use serde::{Deserialize, Serialize};
 pub type BookId = String;
 
 /// File format of a book.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     Pdf,
     Epub,
     Djvu,
     Fb2,
+    #[default]
     Other,
 }
 
@@ -72,12 +75,6 @@ pub struct Book {
     /// Relative cover path (`covers/<id>.webp`).
     pub cover: Option<String>,
     pub added_at: Option<String>,
-}
-
-impl Default for Format {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 impl Book {
