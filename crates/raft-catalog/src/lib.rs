@@ -80,7 +80,9 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed, CatalogError> {
         .into_iter()
         .take(MAX_CATEGORIES)
         .map(|(slug, name)| Category {
-            name: name.as_str().map_or_else(|| slug.clone(), |s| cap(s.to_owned())),
+            name: name
+                .as_str()
+                .map_or_else(|| slug.clone(), |s| cap(s.to_owned())),
             slug: cap(slug),
         })
         .collect();
@@ -92,7 +94,10 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed, CatalogError> {
         skipped: 0,
     };
     for value in raw.books {
-        match serde_json::from_value::<RawBook>(value).ok().and_then(book_from_raw) {
+        match serde_json::from_value::<RawBook>(value)
+            .ok()
+            .and_then(book_from_raw)
+        {
             Some(book) => parsed.catalog.books.push(book),
             None => parsed.skipped += 1,
         }
