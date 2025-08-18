@@ -375,7 +375,11 @@ mod tests {
         assert_eq!(f.languages, vec![("en".into(), 2), ("ru".into(), 2)]);
         assert_eq!(
             f.categories,
-            vec![("career".into(), 1), ("fiction".into(), 1), ("python".into(), 1)]
+            vec![
+                ("career".into(), 1),
+                ("fiction".into(), 1),
+                ("python".into(), 1)
+            ]
         );
         assert_eq!(f.years, Some((2019, 2019)));
 
