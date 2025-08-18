@@ -190,7 +190,7 @@ pub fn search(
     let book = |i: usize| catalog.books.get(i);
     let title = |i: usize| {
         book(i)
-            .map(|b| b.display_title().to_lowercase())
+            .map(|b| normalize(b.display_title()))
             .unwrap_or_default()
     };
     let year = |i: usize| book(i).and_then(|b| b.year);
