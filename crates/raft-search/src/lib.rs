@@ -108,7 +108,8 @@ enum Skip {
 fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
     if skip != Skip::Category && !f.categories.is_empty() {
         let ok = if f.primary_category_only {
-            book.primary_category().is_some_and(|c| f.categories.contains(c))
+            book.primary_category()
+                .is_some_and(|c| f.categories.contains(c))
         } else {
             book.categories.iter().any(|c| f.categories.contains(c))
         };
@@ -116,8 +117,7 @@ fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
             return false;
         }
     }
-    if skip != Skip::Language && !f.languages.is_empty() && !f.languages.contains(&book.language)
-    {
+    if skip != Skip::Language && !f.languages.is_empty() && !f.languages.contains(&book.language) {
         return false;
     }
     if skip != Skip::Format && !f.formats.is_empty() && !f.formats.contains(&book.format) {
@@ -170,17 +170,29 @@ fn text_scores(
 }
 
 /// Indices into `catalog.books` matching `query`, ordered by `query.sort`.
-pub fn search(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[String]) -> Vec<usize> {
+pub fn search(
+    catalog: &Catalog,
+    index: &Index,
+    query: &Query,
+    content_hits: &[String],
+) -> Vec<usize> {
     let scores = text_scores(catalog, index, &query.text, content_hits);
     let mut hits: Vec<(usize, u32)> = catalog
         .books
         .iter()
         .zip(&scores)
         .enumerate()
-        .filter_map(|(i, (b, s))| s.filter(|_| passes(b, &query.filters, Skip::None)).map(|s| (i, s)))
+        .filter_map(|(i, (b, s))| {
+            s.filter(|_| passes(b, &query.filters, Skip::None))
+                .map(|s| (i, s))
+        })
         .collect();
     let book = |i: usize| catalog.books.get(i);
-    let title = |i: usize| book(i).map(|b| b.display_title().to_lowercase()).unwrap_or_default();
+    let title = |i: usize| {
+        book(i)
+            .map(|b| b.display_title().to_lowercase())
+            .unwrap_or_default()
+    };
     let year = |i: usize| book(i).and_then(|b| b.year);
     match query.sort {
         Sort::Relevance if !query_words(&query.text).is_empty() => {
@@ -189,9 +201,9 @@ pub fn search(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         Sort::Relevance | Sort::Title => hits.sort_by_cached_key(|h| title(h.0)),
         Sort::YearDesc => hits.sort_by_key(|h| (std::cmp::Reverse(year(h.0)), title(h.0))),
         Sort::YearAsc => hits.sort_by_key(|h| (year(h.0).is_none(), year(h.0), title(h.0))),
-        Sort::RecentlyAdded => hits.sort_by_key(|h| {
-            std::cmp::Reverse(book(h.0).and_then(|b| b.added_at.clone()))
-        }),
+        Sort::RecentlyAdded => {
+            hits.sort_by_key(|h| std::cmp::Reverse(book(h.0).and_then(|b| b.added_at.clone())))
+        }
     }
     hits.into_iter().map(|(i, _)| i).collect()
 }
@@ -267,7 +279,14 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    fn book(id: &str, title: &str, cats: &[&str], lang: &str, year: Option<i32>, f: Format) -> Book {
+    fn book(
+        id: &str,
+        title: &str,
+        cats: &[&str],
+        lang: &str,
+        year: Option<i32>,
+        f: Format,
+    ) -> Book {
         Book {
             id: id.into(),
             title: title.into(),
@@ -283,9 +302,30 @@ mod tests {
     fn sample() -> Catalog {
         Catalog {
             books: vec![
-                book("1", "Fluent Python", &["python"], "en", Some(2015), Format::Pdf),
-                book("2", "Изучаем Python", &["python", "career"], "ru", Some(2019), Format::Pdf),
-                book("3", "Kubernetes in Action", &["devops", "cloud"], "en", Some(2018), Format::Epub),
+                book(
+                    "1",
+                    "Fluent Python",
+                    &["python"],
+                    "en",
+                    Some(2015),
+                    Format::Pdf,
+                ),
+                book(
+                    "2",
+                    "Изучаем Python",
+                    &["python", "career"],
+                    "ru",
+                    Some(2019),
+                    Format::Pdf,
+                ),
+                book(
+                    "3",
+                    "Kubernetes in Action",
+                    &["devops", "cloud"],
+                    "en",
+                    Some(2018),
+                    Format::Epub,
+                ),
                 book("4", "Ёжик в тумане", &["fiction"], "ru", None, Format::Fb2),
             ],
             categories: vec![],
