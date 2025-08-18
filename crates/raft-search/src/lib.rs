@@ -265,7 +265,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         v
     };
     let mut formats: Vec<_> = formats.into_iter().collect();
-    formats.sort_by(|a, b| b.1.cmp(&a.1));
+    formats.sort_by_key(|a| std::cmp::Reverse(a.1));
     Facets {
         categories: by_count(cats),
         languages: by_count(langs),
@@ -373,7 +373,10 @@ mod tests {
         let f = facets(&c, &i, &query, &[]);
         // Language facet ignores its own filter.
         assert_eq!(f.languages, vec![("en".into(), 2), ("ru".into(), 2)]);
-        assert_eq!(f.categories.first(), Some(&("python".to_owned(), 1)));
+        assert_eq!(
+            f.categories,
+            vec![("career".into(), 1), ("fiction".into(), 1), ("python".into(), 1)]
+        );
         assert_eq!(f.years, Some((2019, 2019)));
 
         query.filters.year_min = Some(2016);
