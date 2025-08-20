@@ -133,7 +133,9 @@ static REGISTRY: &[CommandSpec] = &[
         shortcut: ctrl("Z"),
         enabled: has_undo,
         record: false,
-        ..spec("edit.undo", "Anulează", |s, _| s.undo().map(|()| Value::Null))
+        ..spec("edit.undo", "Anulează", |s, _| {
+            s.undo().map(|()| Value::Null)
+        })
     },
     CommandSpec {
         menu: Some("Edit/Redo"),
@@ -155,7 +157,11 @@ static REGISTRY: &[CommandSpec] = &[
     },
     CommandSpec {
         params: r#"{"slug": string}"#,
-        ..spec("filter.category.toggle", "Filtru: categorie", toggle_category)
+        ..spec(
+            "filter.category.toggle",
+            "Filtru: categorie",
+            toggle_category,
+        )
     },
     CommandSpec {
         params: r#"{"on": bool}"#,
@@ -200,9 +206,17 @@ static REGISTRY: &[CommandSpec] = &[
         menu: Some("File/Open in external app"),
         shortcut: ctrl("O"),
         params: r#"{"id": string?} (default: current book)"#,
-        enabled: |s| s.current_book().map(|_| ()).ok_or_else(|| "no book selected".into()),
+        enabled: |s| {
+            s.current_book()
+                .map(|_| ())
+                .ok_or_else(|| "no book selected".into())
+        },
         record: false,
-        ..spec("book.open_external", "Deschide în aplicația externă", open_external)
+        ..spec(
+            "book.open_external",
+            "Deschide în aplicația externă",
+            open_external,
+        )
     },
     CommandSpec {
         params: r#"{"page": int}"#,
@@ -220,7 +234,9 @@ static REGISTRY: &[CommandSpec] = &[
         shortcut: key("ArrowLeft"),
         enabled: in_reader,
         coalesce: true,
-        ..spec("reader.prev", "Pagina anterioară", |s, _| reader_step(s, -1))
+        ..spec("reader.prev", "Pagina anterioară", |s, _| {
+            reader_step(s, -1)
+        })
     },
     CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
@@ -396,14 +412,18 @@ fn open_external(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         .catalog
         .book(&id)
         .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
-    s.backend.open_external(book).map_err(EngineError::Backend)?;
+    s.backend
+        .open_external(book)
+        .map_err(EngineError::Backend)?;
     Ok(Value::Null)
 }
 
 fn reader_book(s: &Session) -> Result<String, EngineError> {
     match &s.state.route {
         Route::Reader { id } => Ok(id.clone()),
-        _ => Err(EngineError::Disabled("no book is open in the reader".into())),
+        _ => Err(EngineError::Disabled(
+            "no book is open in the reader".into(),
+        )),
     }
 }
 
@@ -433,7 +453,8 @@ fn set_page(s: &mut Session, id: &str, page: i64) -> Result<u32, EngineError> {
 
 fn reader_goto(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = reader_book(s)?;
-    let page = opt_i64(p, "page")?.ok_or_else(|| EngineError::BadParams("missing `page`".into()))?;
+    let page =
+        opt_i64(p, "page")?.ok_or_else(|| EngineError::BadParams("missing `page`".into()))?;
     let page = set_page(s, &id, page)?;
     Ok(json!({ "page": page }))
 }
