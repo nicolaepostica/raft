@@ -384,7 +384,7 @@ fn book_read(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     if book.format.is_paged() {
         let page = s.state.progress.get(&id).and_then(|p| p.page).unwrap_or(1);
         s.state.route = Route::Reader { id: id.clone() };
-        set_page(s, &id, page)?;
+        let page = set_page(s, &id, i64::from(page))?;
         Ok(json!({ "reader": "paged", "page": page }))
     } else {
         s.backend
