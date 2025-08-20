@@ -286,6 +286,14 @@ dependencies = [
 [[package]]
 name = "raft-engine"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "raft-doc",
+ "raft-search",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "raft-render"
