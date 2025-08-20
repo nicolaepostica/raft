@@ -14,17 +14,27 @@ struct Recorder {
 
 impl Backend for Recorder {
     fn content_search(&self, text: &str, _: usize) -> Result<Vec<String>, String> {
-        Ok(if text == "inside" { vec!["b".into()] } else { vec![] })
+        Ok(if text == "inside" {
+            vec!["b".into()]
+        } else {
+            vec![]
+        })
     }
     fn save_progress(&self, p: &Progress) -> Result<(), String> {
-        self.saved.lock().unwrap_or_else(|e| e.into_inner()).push(p.clone());
+        self.saved
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(p.clone());
         Ok(())
     }
     fn delete_progress(&self, _: &str) -> Result<(), String> {
         Ok(())
     }
     fn open_external(&self, b: &Book) -> Result<(), String> {
-        self.opened.lock().unwrap_or_else(|e| e.into_inner()).push(b.id.clone());
+        self.opened
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(b.id.clone());
         Ok(())
     }
     fn now(&self) -> i64 {
@@ -55,8 +65,14 @@ fn catalog() -> Catalog {
             },
         ],
         categories: vec![
-            Category { slug: "go-rust".into(), name: "Go, Rust".into() },
-            Category { slug: "fiction".into(), name: "Beletristică".into() },
+            Category {
+                slug: "go-rust".into(),
+                name: "Go, Rust".into(),
+            },
+            Category {
+                slug: "fiction".into(),
+                name: "Beletristică".into(),
+            },
         ],
     }
 }
@@ -73,7 +89,11 @@ fn registry_ids_are_unique_and_shortcuts_distinct() {
     let n = ids.len();
     ids.dedup();
     assert_eq!(ids.len(), n);
-    let mut keys: Vec<_> = registry().iter().filter_map(|c| c.shortcut).map(|s| (s.key, s.command, s.shift, s.alt)).collect();
+    let mut keys: Vec<_> = registry()
+        .iter()
+        .filter_map(|c| c.shortcut)
+        .map(|s| (s.key, s.command, s.shift, s.alt))
+        .collect();
     keys.sort_unstable();
     let n = keys.len();
     keys.dedup();
@@ -88,7 +108,8 @@ fn search_filters_and_undo() {
     assert_eq!(s.result_count(), 1);
     s.run("search.set", &json!({"text": "inside"})).unwrap();
     assert_eq!(s.results().next().map(|b| b.id.as_str()), Some("b"));
-    s.run("filter.language.toggle", &json!({"language": "en"})).unwrap();
+    s.run("filter.language.toggle", &json!({"language": "en"}))
+        .unwrap();
     assert_eq!(s.result_count(), 0);
     s.run("edit.undo", &Value::Null).unwrap();
     assert_eq!(s.result_count(), 1);
@@ -129,10 +150,22 @@ fn non_paged_books_open_externally() {
 #[test]
 fn errors_roll_back_and_report() {
     let (mut s, _) = session();
-    assert!(matches!(s.run("nope", &Value::Null), Err(EngineError::UnknownCommand(_))));
-    assert!(matches!(s.run("view.book", &json!({"id": "zzz"})), Err(EngineError::NotFound(_))));
-    assert!(matches!(s.run("reader.next", &Value::Null), Err(EngineError::Disabled(_))));
-    assert!(matches!(s.run("filter.years", &json!({"min": 2020, "max": 1990})), Err(EngineError::BadParams(_))));
+    assert!(matches!(
+        s.run("nope", &Value::Null),
+        Err(EngineError::UnknownCommand(_))
+    ));
+    assert!(matches!(
+        s.run("view.book", &json!({"id": "zzz"})),
+        Err(EngineError::NotFound(_))
+    ));
+    assert!(matches!(
+        s.run("reader.next", &Value::Null),
+        Err(EngineError::Disabled(_))
+    ));
+    assert!(matches!(
+        s.run("filter.years", &json!({"min": 2020, "max": 1990})),
+        Err(EngineError::BadParams(_))
+    ));
     assert!(s.status.is_some());
     assert_eq!(s.route(), &Route::Library);
 }
