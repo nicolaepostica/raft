@@ -134,7 +134,9 @@ impl Session {
 
     /// Books matching the current query, in display order.
     pub fn results(&self) -> impl Iterator<Item = &Book> {
-        self.results.iter().filter_map(|&i| self.catalog.books.get(i))
+        self.results
+            .iter()
+            .filter_map(|&i| self.catalog.books.get(i))
     }
 
     pub fn result_count(&self) -> usize {
