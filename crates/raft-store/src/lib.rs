@@ -46,36 +46,35 @@ impl CatalogDb {
                     publisher, isbn, categories, tags, description, cover, added_at
              FROM books",
         )?;
+        // Columns are read loosely: a wrongly typed value becomes "missing".
         let rows = stmt.query_map([], |r| {
+            let text = |i: usize| -> Option<String> {
+                r.get_ref(i).ok()?.as_str().ok().map(str::to_owned)
+            };
+            let int = |i: usize| -> Option<i64> { r.get_ref(i).ok()?.as_i64().ok() };
+            let list = |i: usize| json_list(&text(i).unwrap_or_default());
             Ok(BookParts {
-                id: r.get(0)?,
-                path: r.get(1)?,
-                filename: r.get(2)?,
-                format: r.get(3)?,
-                size: r
-                    .get::<_, Option<i64>>(4)?
-                    .and_then(|n| u64::try_from(n).ok()),
-                pages: r
-                    .get::<_, Option<i64>>(5)?
-                    .and_then(|n| u32::try_from(n).ok()),
-                title: r.get(6)?,
-                authors: json_list(&r.get::<_, Option<String>>(7)?.unwrap_or_default()),
-                year: r
-                    .get::<_, Option<i64>>(8)?
-                    .and_then(|n| i32::try_from(n).ok()),
-                language: r.get(9)?,
-                publisher: r.get(10)?,
-                isbn: r.get(11)?,
-                categories: json_list(&r.get::<_, Option<String>>(12)?.unwrap_or_default()),
-                tags: json_list(&r.get::<_, Option<String>>(13)?.unwrap_or_default()),
-                description: r.get(14)?,
-                cover: r.get(15)?,
-                added_at: r.get(16)?,
+                id: text(0),
+                path: text(1),
+                filename: text(2),
+                format: text(3),
+                size: int(4).and_then(|n| u64::try_from(n).ok()),
+                pages: int(5).and_then(|n| u32::try_from(n).ok()),
+                title: text(6),
+                authors: list(7),
+                year: int(8).and_then(|n| i32::try_from(n).ok()),
+                language: text(9),
+                publisher: text(10),
+                isbn: text(11),
+                categories: list(12),
+                tags: list(13),
+                description: text(14),
+                cover: text(15),
+                added_at: text(16),
             })
         })?;
         let mut books = Vec::new();
         for row in rows.take(MAX_BOOKS) {
-            // A row with a wrongly typed column is skipped, not fatal.
             if let Some(book) = row.ok().and_then(book_from_parts) {
                 books.push(book);
             }
