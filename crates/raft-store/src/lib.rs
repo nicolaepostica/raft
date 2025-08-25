@@ -8,7 +8,7 @@ use std::path::Path;
 
 use raft_catalog::{BookParts, book_from_parts, json_list};
 use raft_doc::{BookId, Catalog, Category, Progress};
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, params};
 
 /// Most books loaded from the catalog.
 pub const MAX_BOOKS: usize = raft_catalog::MAX_BOOKS;
@@ -190,24 +190,6 @@ impl UserDb {
         self.conn
             .execute("DELETE FROM progress WHERE book_id = ?1", params![book_id])?;
         Ok(())
-    }
-
-    pub fn progress(&self, book_id: &str) -> Result<Option<Progress>, StoreError> {
-        Ok(self.load_progress()?.into_iter().find(|p| p.book_id == book_id)).map(|p| {
-            p.or(None)
-        })
-        .and_then(|p| Ok(p).map(Some).and_then(|o: Option<Option<Progress>>| Ok(o.flatten())))
-        .map(|p| p.filter(|_| true))
-        .and_then(|p| {
-            // Keep a direct query path for callers that only need one row.
-            if p.is_some() {
-                return Ok(p);
-            }
-            self.conn
-                .query_row("SELECT 1 FROM progress WHERE book_id = ?1", params![book_id], |_| Ok(()))
-                .optional()?;
-            Ok(None)
-        })
     }
 }
 
