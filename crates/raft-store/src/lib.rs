@@ -111,18 +111,33 @@ impl CatalogDb {
 }
 
 /// Builds a safe FTS5 query: every word quoted, as a prefix, all required.
+///
+/// FTS5 folds Latin diacritics only, so each word is searched both as typed
+/// (`ёжик`) and normalized (`ежик`).
 pub fn fts_query(text: &str) -> Option<String> {
-    let words = raft_search::query_words(text);
-    if words.is_empty() {
-        return None;
+    let text: String = text.chars().take(raft_search::MAX_QUERY_CHARS).collect();
+    let terms: Vec<String> = text
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .take(raft_search::MAX_QUERY_WORDS)
+        .map(|raw| {
+            let norm: String = raft_search::normalize(raw)
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect();
+            if norm.is_empty() || norm == raw {
+                format!("\"{raw}\"*")
+            } else {
+                format!("(\"{raw}\"* OR \"{norm}\"*)")
+            }
+        })
+        .collect();
+    if terms.is_empty() {
+        None
+    } else {
+        Some(terms.join(" "))
     }
-    Some(
-        words
-            .iter()
-            .map(|w| format!("\"{}\"*", w.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" "),
-    )
 }
 
 /// The app's own database.
@@ -251,7 +266,8 @@ mod tests {
     fn content_search_by_prefix_and_without_diacritics() {
         let db = catalog_db();
         assert_eq!(db.content_search("corout", 10).unwrap(), vec!["a"]);
-        assert_eq!(db.content_search("ежик", 10).unwrap(), vec!["b"]);
+        assert_eq!(db.content_search("Ёжик", 10).unwrap(), vec!["b"]);
+        assert_eq!(db.content_search("asyncio", 10).unwrap(), vec!["a"]);
         assert!(db.content_search("   ", 10).unwrap().is_empty());
     }
 
