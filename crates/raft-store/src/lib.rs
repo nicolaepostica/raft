@@ -52,11 +52,17 @@ impl CatalogDb {
                 path: r.get(1)?,
                 filename: r.get(2)?,
                 format: r.get(3)?,
-                size: r.get::<_, Option<i64>>(4)?.and_then(|n| u64::try_from(n).ok()),
-                pages: r.get::<_, Option<i64>>(5)?.and_then(|n| u32::try_from(n).ok()),
+                size: r
+                    .get::<_, Option<i64>>(4)?
+                    .and_then(|n| u64::try_from(n).ok()),
+                pages: r
+                    .get::<_, Option<i64>>(5)?
+                    .and_then(|n| u32::try_from(n).ok()),
                 title: r.get(6)?,
                 authors: json_list(&r.get::<_, Option<String>>(7)?.unwrap_or_default()),
-                year: r.get::<_, Option<i64>>(8)?.and_then(|n| i32::try_from(n).ok()),
+                year: r
+                    .get::<_, Option<i64>>(8)?
+                    .and_then(|n| i32::try_from(n).ok()),
                 language: r.get(9)?,
                 publisher: r.get(10)?,
                 isbn: r.get(11)?,
@@ -93,9 +99,9 @@ impl CatalogDb {
         let Some(fts) = fts_query(text) else {
             return Ok(Vec::new());
         };
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT id FROM books_fts WHERE books_fts MATCH ?1 ORDER BY rank LIMIT ?2")?;
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id FROM books_fts WHERE books_fts MATCH ?1 ORDER BY rank LIMIT ?2",
+        )?;
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
         let ids = stmt
             .query_map(params![fts, limit], |r| r.get::<_, String>(0))?
@@ -160,7 +166,9 @@ impl UserDb {
                 Ok(Progress {
                     book_id: r.get(0)?,
                     position: r.get(1)?,
-                    page: r.get::<_, Option<i64>>(2)?.and_then(|n| u32::try_from(n).ok()),
+                    page: r
+                        .get::<_, Option<i64>>(2)?
+                        .and_then(|n| u32::try_from(n).ok()),
                     percent: if percent.is_finite() {
                         percent.clamp(0.0, 100.0) as f32
                     } else {
@@ -175,7 +183,11 @@ impl UserDb {
     }
 
     pub fn save_progress(&self, p: &Progress) -> Result<(), StoreError> {
-        let percent = if p.percent.is_finite() { f64::from(p.percent) } else { 0.0 };
+        let percent = if p.percent.is_finite() {
+            f64::from(p.percent)
+        } else {
+            0.0
+        };
         self.conn.execute(
             "INSERT INTO progress(book_id, position, page, percent, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5)
