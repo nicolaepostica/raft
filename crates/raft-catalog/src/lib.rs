@@ -136,6 +136,7 @@ fn as_i32(v: &serde_json::Value) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use raft_doc::Format;
     use proptest::prelude::*;
 
     const SAMPLE: &str = r#"{
