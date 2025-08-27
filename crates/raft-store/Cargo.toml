@@ -9,7 +9,6 @@ publish = false
 
 [dependencies]
 raft-doc.workspace = true
-raft-catalog.workspace = true
 raft-search.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
