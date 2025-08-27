@@ -6,12 +6,12 @@
 
 use std::path::Path;
 
-use raft_catalog::{BookParts, book_from_parts, json_list};
+use raft_doc::sanitize::{BookParts, book_from_parts, json_list};
 use raft_doc::{BookId, Catalog, Category, Progress};
 use rusqlite::{Connection, OpenFlags, params};
 
 /// Most books loaded from the catalog.
-pub const MAX_BOOKS: usize = raft_catalog::MAX_BOOKS;
+pub const MAX_BOOKS: usize = 200_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -88,7 +88,7 @@ impl CatalogDb {
                 })
             })?
             .filter_map(Result::ok)
-            .take(raft_catalog::MAX_CATEGORIES)
+            .take(1024)
             .collect();
         Ok(Catalog { books, categories })
     }
