@@ -95,4 +95,3 @@ pub fn cap(mut s: String) -> String {
     }
     s
 }
-
