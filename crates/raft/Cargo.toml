@@ -1,5 +1,6 @@
 [package]
 name = "raft"
+description = "Raft: a personal book library with search, filters and a reader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,6 +8,14 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+raft-doc.workspace = true
+raft-engine.workspace = true
+raft-store.workspace = true
+raft-render.workspace = true
+raft-ui.workspace = true
+eframe.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
