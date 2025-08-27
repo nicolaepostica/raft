@@ -1,5 +1,7 @@
 //! Raft data model (layer 1): plain data with serde, no logic beyond small helpers.
 
+pub mod sanitize;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
