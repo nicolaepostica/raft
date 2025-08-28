@@ -93,7 +93,10 @@ impl RaftUi {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         if ctx.input_mut(|i| {
-            i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::F))
+            i.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND,
+                egui::Key::F,
+            ))
         }) {
             self.focus_search = true;
         }
@@ -117,7 +120,11 @@ impl RaftUi {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
-            for (menu, title) in [("File", "Fișier"), ("Edit", "Editare"), ("View", "Vizualizare")] {
+            for (menu, title) in [
+                ("File", "Fișier"),
+                ("Edit", "Editare"),
+                ("View", "Vizualizare"),
+            ] {
                 ui.menu_button(title, |ui| {
                     for spec in registry() {
                         let Some(path) = spec.menu else { continue };
@@ -147,7 +154,11 @@ impl RaftUi {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let total = self.session.catalog().books.len();
-            ui.label(format!("{} din {} cărți", self.session.result_count(), total));
+            ui.label(format!(
+                "{} din {} cărți",
+                self.session.result_count(),
+                total
+            ));
             if let Some(status) = &self.session.status {
                 ui.separator();
                 ui.colored_label(ui.visuals().warn_fg_color, status);
