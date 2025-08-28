@@ -14,7 +14,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     };
     let page = app.session.progress(id).and_then(|p| p.page).unwrap_or(1);
     ui.horizontal(|ui| {
-        if ui.button("← Înapoi").clicked() {
+        if ui.button("Înapoi").clicked() {
             app.act("view.library", json!({}));
         }
         ui.strong(book.display_title());
