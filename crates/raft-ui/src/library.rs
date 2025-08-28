@@ -49,7 +49,10 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         ui.strong("Limbă");
         for (lang, n) in &facets.languages {
             let mut on = filters.languages.contains(lang);
-            if ui.checkbox(&mut on, format!("{}  ({n})", language_name(lang))).changed() {
+            if ui
+                .checkbox(&mut on, format!("{}  ({n})", language_name(lang)))
+                .changed()
+            {
                 app.act("filter.language.toggle", json!({ "language": lang }));
             }
         }
@@ -110,21 +113,28 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
     search_bar(app, ui);
     ui.add_space(8.0);
 
-    let show_continue = app.session.query().text.is_empty() && app.session.query().filters.is_empty();
+    let show_continue =
+        app.session.query().text.is_empty() && app.session.query().filters.is_empty();
     let recent: Vec<Book> = if show_continue {
-        app.session.continue_reading(12).into_iter().cloned().collect()
+        app.session
+            .continue_reading(12)
+            .into_iter()
+            .cloned()
+            .collect()
     } else {
         Vec::new()
     };
     if !recent.is_empty() {
         ui.strong("Continuă lectura");
-        egui::ScrollArea::horizontal().id_salt("continue").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for book in &recent {
-                    card(app, ui, book);
-                }
+        egui::ScrollArea::horizontal()
+            .id_salt("continue")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for book in &recent {
+                        card(app, ui, book);
+                    }
+                });
             });
-        });
         ui.separator();
     }
 
@@ -221,10 +231,8 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         );
         painter.rect_filled(bar, 0.0, visuals.selection.bg_fill);
     }
-    let text_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left(), cover_rect.bottom() + 6.0),
-        rect.max,
-    );
+    let text_rect =
+        egui::Rect::from_min_max(egui::pos2(rect.left(), cover_rect.bottom() + 6.0), rect.max);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
     child.add(egui::Label::new(egui::RichText::new(book.display_title()).strong()).truncate());
     let meta = match (book.authors.first(), book.year) {
@@ -235,7 +243,11 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     };
     child.add(egui::Label::new(egui::RichText::new(meta).small().weak()).truncate());
     if book.format != Format::Pdf {
-        child.label(egui::RichText::new(book.format.slug().to_uppercase()).small().weak());
+        child.label(
+            egui::RichText::new(book.format.slug().to_uppercase())
+                .small()
+                .weak(),
+        );
     }
     if resp.hovered() {
         painter.rect_stroke(
