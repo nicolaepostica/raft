@@ -32,28 +32,41 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     ui.label(egui::RichText::new(book.authors_line()).size(16.0));
                 }
                 ui.add_space(8.0);
-                egui::Grid::new("meta").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-                    let mut row = |k: &str, v: String| {
-                        if !v.is_empty() {
-                            ui.label(egui::RichText::new(k).weak());
-                            ui.label(v);
-                            ui.end_row();
-                        }
-                    };
-                    row("An", book.year.map(|y| y.to_string()).unwrap_or_default());
-                    row("Limbă", language_name(&book.language).to_owned());
-                    row("Format", book.format.slug().to_uppercase());
-                    row("Pagini", book.pages.map(|p| p.to_string()).unwrap_or_default());
-                    row("Editură", book.publisher.clone().unwrap_or_default());
-                    row("ISBN", book.isbn.clone().unwrap_or_default());
-                    row("Fișier", book.filename.clone());
-                    row("Mărime", format!("{:.1} MB", book.size as f64 / 1_048_576.0));
-                });
+                egui::Grid::new("meta")
+                    .num_columns(2)
+                    .spacing([16.0, 4.0])
+                    .show(ui, |ui| {
+                        let mut row = |k: &str, v: String| {
+                            if !v.is_empty() {
+                                ui.label(egui::RichText::new(k).weak());
+                                ui.label(v);
+                                ui.end_row();
+                            }
+                        };
+                        row("An", book.year.map(|y| y.to_string()).unwrap_or_default());
+                        row("Limbă", language_name(&book.language).to_owned());
+                        row("Format", book.format.slug().to_uppercase());
+                        row(
+                            "Pagini",
+                            book.pages.map(|p| p.to_string()).unwrap_or_default(),
+                        );
+                        row("Editură", book.publisher.clone().unwrap_or_default());
+                        row("ISBN", book.isbn.clone().unwrap_or_default());
+                        row("Fișier", book.filename.clone());
+                        row(
+                            "Mărime",
+                            format!("{:.1} MB", book.size as f64 / 1_048_576.0),
+                        );
+                    });
                 ui.add_space(8.0);
                 ui.horizontal_wrapped(|ui| {
                     for slug in &book.categories {
                         let name = app.session.catalog().category_name(slug).to_owned();
-                        if ui.button(name).on_hover_text("Arată cărțile din categorie").clicked() {
+                        if ui
+                            .button(name)
+                            .on_hover_text("Arată cărțile din categorie")
+                            .clicked()
+                        {
                             app.act("filter.clear", json!({}));
                             app.act("filter.category.toggle", json!({ "slug": slug }));
                             app.act("view.library", json!({}));
