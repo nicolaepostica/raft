@@ -21,7 +21,7 @@ serde_json = "1"
 thiserror = "2"
 anyhow = "1"
 proptest = "1"
-egui = "0.37"
+egui = { version = "0.37", features = ["default_fonts"] }
 eframe = "0.37"
 egui_kittest = "0.37"
 image = { version = "0.25", default-features = false, features = ["webp", "png", "jpeg"] }
