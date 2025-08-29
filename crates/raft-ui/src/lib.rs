@@ -41,7 +41,6 @@ pub struct RaftUi {
     pub session: Session,
     files: Box<dyn Files>,
     covers: covers::Covers,
-    reader: reader::ReaderView,
     search: String,
     focus_search: bool,
 }
@@ -53,7 +52,6 @@ impl RaftUi {
             session,
             files,
             covers: covers::Covers::default(),
-            reader: reader::ReaderView::default(),
             search,
             focus_search: false,
         }
