@@ -14,6 +14,7 @@ raft-store.workspace = true
 raft-render.workspace = true
 raft-ui.workspace = true
 eframe.workspace = true
+egui.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 
