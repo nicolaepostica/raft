@@ -176,13 +176,13 @@ pub fn keyboard_shortcut(sc: Shortcut) -> Option<egui::KeyboardShortcut> {
     let key = egui::Key::from_name(sc.key)?;
     let mut m = egui::Modifiers::NONE;
     if sc.command {
-        m = m | egui::Modifiers::COMMAND;
+        m |= egui::Modifiers::COMMAND;
     }
     if sc.shift {
-        m = m | egui::Modifiers::SHIFT;
+        m |= egui::Modifiers::SHIFT;
     }
     if sc.alt {
-        m = m | egui::Modifiers::ALT;
+        m |= egui::Modifiers::ALT;
     }
     Some(egui::KeyboardShortcut::new(m, key))
 }
