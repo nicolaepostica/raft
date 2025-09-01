@@ -30,11 +30,20 @@ fn app() -> RaftUi {
             },
         ],
         categories: vec![
-            Category { slug: "go-rust".into(), name: "Go, Rust".into() },
-            Category { slug: "fiction".into(), name: "Beletristică".into() },
+            Category {
+                slug: "go-rust".into(),
+                name: "Go, Rust".into(),
+            },
+            Category {
+                slug: "fiction".into(),
+                name: "Beletristică".into(),
+            },
         ],
     };
-    RaftUi::new(Session::new(catalog, vec![], Box::new(NullBackend)), Box::new(NoFiles))
+    RaftUi::new(
+        Session::new(catalog, vec![], Box::new(NullBackend)),
+        Box::new(NoFiles),
+    )
 }
 
 fn harness() -> Harness<'static, RaftUi> {
@@ -58,7 +67,9 @@ fn library_shows_books_and_filters() {
 fn clicking_a_card_opens_the_book_page() {
     let mut h = harness();
     h.run();
-    h.state_mut().run("view.book", serde_json::json!({"id": "a"})).unwrap();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
     h.run();
     h.get_by_label("O carte despre Rust.");
     h.get_by_label("Citește").click();
