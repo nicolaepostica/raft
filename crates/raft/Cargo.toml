@@ -11,7 +11,6 @@ publish = false
 raft-doc.workspace = true
 raft-engine.workspace = true
 raft-store.workspace = true
-raft-render.workspace = true
 raft-ui.workspace = true
 eframe.workspace = true
 egui.workspace = true
