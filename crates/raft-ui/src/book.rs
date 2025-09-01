@@ -9,7 +9,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         ui.label("Cartea nu mai există în catalog.");
         return;
     };
-    if ui.button("← Biblioteca").clicked() {
+    if ui.button("Înapoi la bibliotecă").clicked() {
         app.act("view.library", json!({}));
     }
     ui.add_space(8.0);
