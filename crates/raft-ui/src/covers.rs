@@ -27,7 +27,12 @@ pub struct Covers {
 
 impl Covers {
     /// The cover texture for `book`, decoding it if this frame's budget allows.
-    pub fn get(&mut self, ctx: &egui::Context, files: &dyn Files, book: &Book) -> Option<egui::TextureHandle> {
+    pub fn get(
+        &mut self,
+        ctx: &egui::Context,
+        files: &dyn Files,
+        book: &Book,
+    ) -> Option<egui::TextureHandle> {
         let frame = ctx.cumulative_frame_nr();
         if frame != self.frame {
             self.frame = frame;
@@ -48,7 +53,11 @@ impl Covers {
             .cover(book)
             .and_then(|bytes| decode_image(&bytes).ok())
             .map_or(Cover::Missing, |img| {
-                Cover::Ready(ctx.load_texture(format!("cover-{}", book.id), img, egui::TextureOptions::LINEAR))
+                Cover::Ready(ctx.load_texture(
+                    format!("cover-{}", book.id),
+                    img,
+                    egui::TextureOptions::LINEAR,
+                ))
             });
         let tex = match &cover {
             Cover::Ready(t) => Some(t.clone()),
