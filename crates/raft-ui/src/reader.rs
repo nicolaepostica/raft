@@ -4,9 +4,6 @@ use serde_json::json;
 
 use crate::RaftUi;
 
-#[derive(Default)]
-pub struct ReaderView;
-
 pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let Some(book) = app.session.book(id).cloned() else {
         ui.label("Cartea nu mai există în catalog.");
