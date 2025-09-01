@@ -74,9 +74,14 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         let mut max = filters.year_max.unwrap_or(hi);
         let changed = ui
             .horizontal(|ui| {
-                let a = ui.add(egui::DragValue::new(&mut min).range(1000..=max));
-                ui.label("–");
-                let b = ui.add(egui::DragValue::new(&mut max).range(min..=3000));
+                let from = ui.label("de la");
+                let a = ui
+                    .add(egui::DragValue::new(&mut min).range(1000..=max))
+                    .labelled_by(from.id);
+                let to = ui.label("până la");
+                let b = ui
+                    .add(egui::DragValue::new(&mut max).range(min..=3000))
+                    .labelled_by(to.id);
                 a.changed() || b.changed()
             })
             .inner;
@@ -166,7 +171,7 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         let edit = egui::TextEdit::singleline(&mut app.search)
             .hint_text("Caută după titlu, autor, etichetă sau conținut…  (Ctrl+F)")
-            .desired_width((ui.available_width() - 220.0).max(120.0));
+            .desired_width((ui.available_width() - 260.0).max(120.0));
         let resp = ui.add(edit);
         if app.focus_search {
             resp.request_focus();
@@ -179,7 +184,7 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
             app.search.clone_from(&app.session.query().text);
         }
         let current = app.session.query().sort;
-        egui::ComboBox::from_id_salt("sort")
+        egui::ComboBox::from_label("Sortare")
             .selected_text(sort_label(current))
             .show_ui(ui, |ui| {
                 for s in Sort::ALL {
