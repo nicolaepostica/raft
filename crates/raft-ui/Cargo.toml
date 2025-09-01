@@ -1,5 +1,6 @@
 [package]
 name = "raft-ui"
+description = "Raft egui interface: library grid, filters, book page and reader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,6 +8,14 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+raft-doc.workspace = true
+raft-engine.workspace = true
+egui.workspace = true
+image.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+egui_kittest.workspace = true
 
 [lints]
 workspace = true
