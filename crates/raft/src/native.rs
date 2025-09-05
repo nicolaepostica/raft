@@ -44,11 +44,7 @@ impl NativeBackend {
 /// Joins a catalog path to the library root, refusing paths that escape it.
 pub fn resolve(root: &Path, rel: &str) -> Option<PathBuf> {
     let rel = Path::new(rel);
-    if rel.as_os_str().is_empty()
-        || rel
-            .components()
-            .any(|c| !matches!(c, Component::Normal(_)))
-    {
+    if rel.as_os_str().is_empty() || rel.components().any(|c| !matches!(c, Component::Normal(_))) {
         return None;
     }
     Some(root.join(rel))
@@ -56,7 +52,9 @@ pub fn resolve(root: &Path, rel: &str) -> Option<PathBuf> {
 
 impl Backend for NativeBackend {
     fn content_search(&self, text: &str, limit: usize) -> Result<Vec<BookId>, String> {
-        self.catalog.content_search(text, limit).map_err(|e| e.to_string())
+        self.catalog
+            .content_search(text, limit)
+            .map_err(|e| e.to_string())
     }
 
     fn save_progress(&self, p: &Progress) -> Result<(), String> {
@@ -124,7 +122,10 @@ mod tests {
     fn resolve_refuses_escapes() {
         let root = Path::new("/lib");
         assert_eq!(resolve(root, "a.pdf"), Some(PathBuf::from("/lib/a.pdf")));
-        assert_eq!(resolve(root, "covers/x.webp"), Some(PathBuf::from("/lib/covers/x.webp")));
+        assert_eq!(
+            resolve(root, "covers/x.webp"),
+            Some(PathBuf::from("/lib/covers/x.webp"))
+        );
         assert_eq!(resolve(root, "../etc/passwd"), None);
         assert_eq!(resolve(root, "/etc/passwd"), None);
         assert_eq!(resolve(root, ""), None);
