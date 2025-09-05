@@ -21,7 +21,8 @@ pub struct Options {
 }
 
 fn parse_args() -> Result<Options> {
-    let mut library = std::env::var_os("RAFT_LIBRARY").map_or_else(|| PathBuf::from("/backup/books"), PathBuf::from);
+    let mut library = std::env::var_os("RAFT_LIBRARY")
+        .map_or_else(|| PathBuf::from("/backup/books"), PathBuf::from);
     let mut data = default_data_path();
     let mut control = None;
     let mut args = std::env::args().skip(1);
@@ -45,7 +46,11 @@ fn parse_args() -> Result<Options> {
             other => bail!("unknown argument `{other}` (see --help)"),
         }
     }
-    Ok(Options { library, data, control })
+    Ok(Options {
+        library,
+        data,
+        control,
+    })
 }
 
 fn default_data_path() -> PathBuf {
