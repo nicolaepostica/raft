@@ -238,7 +238,11 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     }
     let text_rect =
         egui::Rect::from_min_max(egui::pos2(rect.left(), cover_rect.bottom() + 6.0), rect.max);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(text_rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
     child.add(egui::Label::new(egui::RichText::new(book.display_title()).strong()).truncate());
     let meta = match (book.authors.first(), book.year) {
         (Some(a), Some(y)) => format!("{a} · {y}"),
