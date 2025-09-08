@@ -259,6 +259,7 @@ fn search_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     if s.state.route != Route::Library {
         s.state.route = Route::Library;
     }
+    s.refresh();
     Ok(json!({ "results": s.results.len() }))
 }
 
