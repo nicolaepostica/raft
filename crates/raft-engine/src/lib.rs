@@ -2,6 +2,7 @@
 //! panic guard. Every user-visible action is a command run through [`Session::run`].
 
 mod commands;
+pub mod control;
 mod params;
 
 use std::collections::BTreeMap;
