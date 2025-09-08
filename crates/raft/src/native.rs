@@ -1,6 +1,7 @@
 //! Native implementations of the engine backend and the UI file host.
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use raft_doc::{Book, BookId, Catalog, Progress};
@@ -87,15 +88,35 @@ impl Backend for NativeBackend {
     }
 }
 
+type PageKey = (BookId, u32, u32);
+type PageResult = Result<Vec<u8>, String>;
+
+/// Most rendered pages kept in memory.
+const PAGE_CACHE: usize = 12;
+/// Most renders running at once.
+const MAX_RENDERS: usize = 3;
+
+#[derive(Default)]
+struct Pages {
+    done: Vec<(PageKey, PageResult)>,
+    running: Vec<PageKey>,
+}
+
 pub struct NativeFiles {
     library: PathBuf,
+    pages: Arc<Mutex<Pages>>,
 }
 
 impl NativeFiles {
     pub fn new(library: &Path) -> Self {
         Self {
             library: library.to_owned(),
+            pages: Arc::default(),
         }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Pages> {
+        self.pages.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -109,8 +130,39 @@ impl Files for NativeFiles {
         std::fs::read(path).ok()
     }
 
-    fn page(&self, _book: &Book, _page: u32, _width: u32) -> Option<Result<Vec<u8>, String>> {
-        Some(Err("the integrated reader is not available yet".into()))
+    fn page(&self, book: &Book, page: u32, width: u32) -> Option<Result<Vec<u8>, String>> {
+        let key: PageKey = (book.id.clone(), page, width);
+        let mut pages = self.lock();
+        if let Some((_, r)) = pages.done.iter().find(|(k, _)| *k == key) {
+            return Some(r.clone());
+        }
+        if pages.running.contains(&key) || pages.running.len() >= MAX_RENDERS {
+            return None;
+        }
+        let Some(path) = resolve(&self.library, &book.path) else {
+            return Some(Err("the book's path is not valid".into()));
+        };
+        pages.running.push(key.clone());
+        drop(pages);
+        let shared = Arc::clone(&self.pages);
+        let format = book.format;
+        let spawned = std::thread::Builder::new()
+            .name("raft-render".into())
+            .spawn(move || {
+                let result = raft_render::render_page(&path, format, page, width)
+                    .map(|(bytes, _)| bytes)
+                    .map_err(|e| e.to_string());
+                let mut pages = shared.lock().unwrap_or_else(|e| e.into_inner());
+                pages.running.retain(|k| *k != key);
+                pages.done.push((key, result));
+                if pages.done.len() > PAGE_CACHE {
+                    pages.done.remove(0);
+                }
+            });
+        if let Err(e) = spawned {
+            return Some(Err(format!("could not start rendering: {e}")));
+        }
+        None
     }
 }
 
