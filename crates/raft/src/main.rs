@@ -1,5 +1,6 @@
 //! Raft desktop app: wires the SQLite backend and file access into the egui UI.
 
+mod control;
 mod native;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -63,10 +64,58 @@ fn default_data_path() -> PathBuf {
 
 struct App {
     ui: RaftUi,
+    control: Option<std::sync::mpsc::Receiver<control::Pending>>,
+}
+
+impl App {
+    /// Answers control-channel requests on the UI thread.
+    fn serve_control(&mut self, ctx: &egui::Context) {
+        let Some(rx) = &self.control else { return };
+        let pending: Vec<control::Pending> = rx.try_iter().collect();
+        for p in pending {
+            use raft_engine::control::{Request, commands_json, error, ok};
+            let reply = match p.request {
+                Request::Run { command, params } => match self.ui.run(&command, params) {
+                    Ok(v) => ok(v),
+                    Err(e) => error(e),
+                },
+                Request::State => ok(self.ui.session.snapshot()),
+                Request::Commands => ok(commands_json()),
+                Request::Screenshot { path } => {
+                    let reply = p.reply.clone();
+                    let cb = egui::ScreenshotCallback::new(move |img| {
+                        let _ = reply.send(match save_png(&img, &path) {
+                            Ok(()) => ok(serde_json::json!({ "path": path })),
+                            Err(e) => error(e),
+                        });
+                    });
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(cb));
+                    ctx.request_repaint();
+                    continue;
+                }
+            };
+            let _ = p.reply.send(reply);
+        }
+    }
+}
+
+fn save_png(img: &egui::ColorImage, path: &str) -> Result<()> {
+    let [w, h] = img.size;
+    let mut bytes = Vec::with_capacity(w * h * 4);
+    for px in &img.pixels {
+        bytes.extend_from_slice(&px.to_array());
+    }
+    let w = u32::try_from(w).context("image too wide")?;
+    let h = u32::try_from(h).context("image too tall")?;
+    let buf = image::RgbaImage::from_raw(w, h, bytes).context("bad screenshot buffer")?;
+    buf.save_with_format(path, image::ImageFormat::Png)
+        .with_context(|| format!("writing {path}"))
 }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.serve_control(&ctx);
         // Safety net: a bug in drawing must not take the user's state down with it.
         let result = catch_unwind(AssertUnwindSafe(|| self.ui.show(ui)));
         if let Err(payload) = result {
@@ -101,7 +150,13 @@ fn main() -> Result<()> {
     eframe::run_native(
         "Raft",
         native_options,
-        Box::new(move |_cc| Ok(Box::new(App { ui }))),
+        Box::new(move |cc| {
+            let control = match opts.control {
+                Some(port) => Some(control::start(port, cc.egui_ctx.clone())?),
+                None => None,
+            };
+            Ok(Box::new(App { ui, control }))
+        }),
     )
     .map_err(|e| anyhow::anyhow!("window error: {e}"))
 }
