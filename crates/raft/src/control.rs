@@ -41,7 +41,11 @@ fn serve(stream: TcpStream, tx: &Sender<Pending>, ctx: &egui::Context) {
     let mut reader = BufReader::new(stream.take(u64::MAX));
     loop {
         let mut line = Vec::new();
-        let n = match reader.by_ref().take((MAX_LINE + 1) as u64).read_until(b'\n', &mut line) {
+        let n = match reader
+            .by_ref()
+            .take((MAX_LINE + 1) as u64)
+            .read_until(b'\n', &mut line)
+        {
             Ok(0) | Err(_) => return,
             Ok(n) => n,
         };
@@ -52,7 +56,13 @@ fn serve(stream: TcpStream, tx: &Sender<Pending>, ctx: &egui::Context) {
                 Err(e) => control::error(e),
                 Ok(request) => {
                     let (rtx, rrx) = channel();
-                    if tx.send(Pending { request, reply: rtx }).is_err() {
+                    if tx
+                        .send(Pending {
+                            request,
+                            reply: rtx,
+                        })
+                        .is_err()
+                    {
                         return;
                     }
                     ctx.request_repaint();
