@@ -162,7 +162,10 @@ mod tests {
         let (tool, args, _) = command_for(Path::new("/b/y.djvu"), Format::Djvu, 2, 800).unwrap();
         assert_eq!(tool, "ddjvu");
         assert!(args.contains(&"-page=2".to_owned()));
-        assert_eq!(command_for(Path::new("x"), Format::Pdf, 0, 800), Err(RenderError::BadPage));
+        assert_eq!(
+            command_for(Path::new("x"), Format::Pdf, 0, 800),
+            Err(RenderError::BadPage)
+        );
         assert!(matches!(
             command_for(Path::new("x"), Format::Epub, 1, 800),
             Err(RenderError::Unsupported("epub"))
