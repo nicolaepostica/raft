@@ -59,7 +59,9 @@ pub fn parse_request(line: &[u8]) -> Result<Request, ControlError> {
             if !path.ends_with(".png") {
                 return Err(ControlError::Bad("`path` must end with .png".into()));
             }
-            Ok(Request::Screenshot { path: path.to_owned() })
+            Ok(Request::Screenshot {
+                path: path.to_owned(),
+            })
         }
         Some(other) => Err(ControlError::Bad(format!("unknown method `{other}`"))),
         None => Err(ControlError::Bad("missing `method`".into())),
@@ -108,7 +110,10 @@ mod tests {
     fn parses_requests() {
         assert_eq!(
             parse_request(br#"{"method":"run","command":"search.set","params":{"text":"go"}}"#),
-            Ok(Request::Run { command: "search.set".into(), params: json!({"text": "go"}) })
+            Ok(Request::Run {
+                command: "search.set".into(),
+                params: json!({"text": "go"})
+            })
         );
         assert_eq!(parse_request(br#"{"method":"state"}"#), Ok(Request::State));
         assert!(parse_request(br#"{"method":"ui.screenshot","path":"/x.txt"}"#).is_err());
