@@ -76,3 +76,29 @@ fn clicking_a_card_opens_the_book_page() {
     h.run();
     assert_eq!(h.state().session.route(), &Route::Reader { id: "a".into() });
 }
+
+#[test]
+fn reader_without_renderer_shows_error_and_navigates() {
+    let mut h = harness();
+    h.state_mut().run("book.read", serde_json::json!({"id": "a"})).unwrap();
+    h.run();
+    h.get_by_label("din 10");
+    h.get_by_label("Următoarea").click();
+    h.run();
+    assert_eq!(h.state().session.progress("a").and_then(|p| p.page), Some(2));
+    h.get_by_label_contains("Pagina nu a putut fi afișată");
+}
+
+proptest::proptest! {
+    #[test]
+    fn decode_image_never_panics(bytes in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..4096)) {
+        let _ = crate::decode_image(&bytes);
+    }
+
+    #[test]
+    fn decode_image_never_panics_on_png_like_input(tail in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..2048)) {
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.extend(tail);
+        let _ = crate::decode_image(&bytes);
+    }
+}
