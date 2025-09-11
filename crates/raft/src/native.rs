@@ -144,6 +144,7 @@ impl Files for NativeFiles {
         };
         pages.running.push(key.clone());
         drop(pages);
+        let own_key = key.clone();
         let shared = Arc::clone(&self.pages);
         let format = book.format;
         let spawned = std::thread::Builder::new()
@@ -160,6 +161,7 @@ impl Files for NativeFiles {
                 }
             });
         if let Err(e) = spawned {
+            self.lock().running.retain(|k| *k != own_key);
             return Some(Err(format!("could not start rendering: {e}")));
         }
         None
