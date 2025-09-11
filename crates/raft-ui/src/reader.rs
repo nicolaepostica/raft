@@ -101,7 +101,9 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 app.reader.put(key.clone(), tex);
             }
             Some(Err(e)) => app.reader.put(key.clone(), Err(e)),
-            None => ui.ctx().request_repaint_after(std::time::Duration::from_millis(50)),
+            None => ui
+                .ctx()
+                .request_repaint_after(std::time::Duration::from_millis(50)),
         }
     }
     // Prefetch the next page.
