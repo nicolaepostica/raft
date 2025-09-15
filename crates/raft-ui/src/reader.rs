@@ -30,7 +30,7 @@ impl ReaderView {
         self.textures.retain(|(k, _)| *k != key);
         self.textures.push((key, value));
         if self.textures.len() > KEEP {
-            self.textures.remove(0);
+            drop(self.textures.remove(0));
         }
     }
 }
