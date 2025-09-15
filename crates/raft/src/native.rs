@@ -157,7 +157,7 @@ impl Files for NativeFiles {
                 pages.running.retain(|k| *k != key);
                 pages.done.push((key, result));
                 if pages.done.len() > PAGE_CACHE {
-                    pages.done.remove(0);
+                    drop(pages.done.remove(0));
                 }
             });
         if let Err(e) = spawned {
