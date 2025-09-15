@@ -75,7 +75,7 @@ pub fn command_for(
         Format::Djvu => Ok((
             "ddjvu",
             vec![
-                "-format=pnm".into(),
+                "-format=ppm".into(),
                 format!("-page={page}"),
                 format!("-size={width}x{}", width * 4),
                 file,
