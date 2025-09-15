@@ -80,12 +80,17 @@ fn clicking_a_card_opens_the_book_page() {
 #[test]
 fn reader_without_renderer_shows_error_and_navigates() {
     let mut h = harness();
-    h.state_mut().run("book.read", serde_json::json!({"id": "a"})).unwrap();
+    h.state_mut()
+        .run("book.read", serde_json::json!({"id": "a"}))
+        .unwrap();
     h.run();
     h.get_by_label("din 10");
     h.get_by_label("Următoarea").click();
     h.run();
-    assert_eq!(h.state().session.progress("a").and_then(|p| p.page), Some(2));
+    assert_eq!(
+        h.state().session.progress("a").and_then(|p| p.page),
+        Some(2)
+    );
     h.get_by_label_contains("Pagina nu a putut fi afișată");
 }
 
