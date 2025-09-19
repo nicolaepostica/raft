@@ -136,16 +136,14 @@ impl eframe::App for App {
 /// nouveau this produced blocky corrupted text and images. `WGPU_POWER_PREF=high`
 /// still selects the discrete GPU.
 fn wgpu_options() -> eframe::WgpuConfiguration {
-    use eframe::egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
+    use eframe::egui_wgpu::WgpuSetup;
     use eframe::wgpu::PowerPreference;
-    let power_preference = PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
-    eframe::WgpuConfiguration {
-        wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
-            power_preference,
-            ..WgpuSetupCreateNew::default()
-        }),
-        ..eframe::WgpuConfiguration::default()
+    let mut config = eframe::WgpuConfiguration::default();
+    if let WgpuSetup::CreateNew(create) = &mut config.wgpu_setup {
+        create.power_preference =
+            PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
     }
+    config
 }
 
 fn main() -> Result<()> {
