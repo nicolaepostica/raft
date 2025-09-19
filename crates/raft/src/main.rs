@@ -140,8 +140,7 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
     use eframe::wgpu::PowerPreference;
     let mut config = eframe::WgpuConfiguration::default();
     if let WgpuSetup::CreateNew(create) = &mut config.wgpu_setup {
-        create.power_preference =
-            PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
+        create.power_preference = PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
     }
     config
 }
