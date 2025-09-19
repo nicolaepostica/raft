@@ -173,7 +173,10 @@ fn main() -> Result<()> {
         Box::new(move |cc| {
             if let Some(rs) = &cc.wgpu_render_state {
                 let info = rs.adapter.get_info();
-                eprintln!("raft: rendering on {} ({:?}, {})", info.name, info.backend, info.driver);
+                eprintln!(
+                    "raft: rendering on {} ({:?}, {})",
+                    info.name, info.backend, info.driver
+                );
             }
             let control = match opts.control {
                 Some(port) => Some(control::start(port, cc.egui_ctx.clone())?),
