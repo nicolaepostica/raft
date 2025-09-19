@@ -129,6 +129,25 @@ impl eframe::App for App {
     }
 }
 
+/// Renders on the integrated GPU by default.
+///
+/// eframe asks wgpu for the high-performance adapter. On hybrid laptops that is the
+/// discrete GPU, while the compositor shows the window from the integrated one; with
+/// nouveau this produced blocky corrupted text and images. `WGPU_POWER_PREF=high`
+/// still selects the discrete GPU.
+fn wgpu_options() -> eframe::WgpuConfiguration {
+    use eframe::egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
+    use eframe::wgpu::PowerPreference;
+    let power_preference = PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
+    eframe::WgpuConfiguration {
+        wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
+            power_preference,
+            ..WgpuSetupCreateNew::default()
+        }),
+        ..eframe::WgpuConfiguration::default()
+    }
+}
+
 fn main() -> Result<()> {
     let opts = parse_args()?;
     let backend = native::NativeBackend::open(&opts.library, &opts.data)?;
@@ -145,12 +164,17 @@ fn main() -> Result<()> {
         .with_min_inner_size([640.0, 420.0]);
     let native_options = eframe::NativeOptions {
         viewport,
+        wgpu_options: wgpu_options(),
         ..Default::default()
     };
     eframe::run_native(
         "Raft",
         native_options,
         Box::new(move |cc| {
+            if let Some(rs) = &cc.wgpu_render_state {
+                let info = rs.adapter.get_info();
+                eprintln!("raft: rendering on {} ({:?}, {})", info.name, info.backend, info.driver);
+            }
             let control = match opts.control {
                 Some(port) => Some(control::start(port, cc.egui_ctx.clone())?),
                 None => None,
