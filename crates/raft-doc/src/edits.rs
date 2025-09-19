@@ -11,9 +11,7 @@ use crate::sanitize::{MAX_LIST, MAX_STR, cap};
 use crate::{Book, BookId};
 
 /// A metadata field that can be corrected by hand.
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Field {
     Title,
@@ -197,10 +195,17 @@ mod tests {
     #[test]
     fn edited_uses_only_that_books_overrides() {
         let mut o = Overrides::new();
-        o.entry("x".into()).or_default().insert(Field::Title, "Прикладное".into());
-        o.entry("y".into()).or_default().insert(Field::Title, "Other".into());
+        o.entry("x".into())
+            .or_default()
+            .insert(Field::Title, "Прикладное".into());
+        o.entry("y".into())
+            .or_default()
+            .insert(Field::Title, "Other".into());
         assert_eq!(edited(&book(), &o).title, "Прикладное");
-        assert_eq!(edited(&book(), &Overrides::new()).title, "Applied Deep Learning");
+        assert_eq!(
+            edited(&book(), &Overrides::new()).title,
+            "Applied Deep Learning"
+        );
         assert_eq!(Field::from_slug("isbn"), Some(Field::Isbn));
         assert_eq!(Field::from_slug("nope"), None);
     }
