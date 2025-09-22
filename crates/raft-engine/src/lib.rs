@@ -5,9 +5,10 @@ mod commands;
 pub mod control;
 mod params;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+use raft_doc::edits::{self, Field, Override};
 use raft_doc::{Book, BookId, Catalog, Progress, Query, Route, State};
 use raft_search::{Facets, Index};
 use serde_json::Value;
@@ -41,6 +42,14 @@ pub trait Backend: Send {
     fn open_external(&self, book: &Book) -> Result<(), String>;
     /// Current time, unix seconds.
     fn now(&self) -> i64;
+    /// Stores a metadata correction (insert or replace).
+    fn save_override(&self, _o: &Override) -> Result<(), String> {
+        Err("saving corrections is not available here".into())
+    }
+    /// Removes a stored metadata correction.
+    fn delete_override(&self, _book_id: &str, _field: Field) -> Result<(), String> {
+        Err("saving corrections is not available here".into())
+    }
 }
 
 /// Backend that does nothing; used in tests and the web build.
@@ -63,6 +72,12 @@ impl Backend for NullBackend {
     fn now(&self) -> i64 {
         0
     }
+    fn save_override(&self, _: &Override) -> Result<(), String> {
+        Ok(())
+    }
+    fn delete_override(&self, _: &str, _: Field) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Most undo steps kept.
@@ -80,7 +95,11 @@ struct History {
 
 /// One open library: catalog, user state, history and cached results.
 pub struct Session {
+    /// The catalog as loaded, without corrections.
+    base: Catalog,
+    /// The catalog with the corrections applied: what everything else sees.
     catalog: Catalog,
+    positions: HashMap<BookId, usize>,
     index: Index,
     state: State,
     history: History,
@@ -99,8 +118,16 @@ impl Session {
             .into_iter()
             .map(|p| (p.book_id.clone(), p))
             .collect();
+        let positions = catalog
+            .books
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.id.clone(), i))
+            .collect();
         let mut s = Self {
+            base: catalog.clone(),
             catalog,
+            positions,
             index,
             state: State {
                 progress,
@@ -117,8 +144,38 @@ impl Session {
         s
     }
 
+    /// Loads the stored metadata corrections (at startup; not an undo step).
+    pub fn with_overrides(mut self, overrides: Vec<Override>) -> Self {
+        let before = self.state.overrides.clone();
+        for o in overrides {
+            if self.positions.contains_key(&o.book_id) {
+                self.state
+                    .overrides
+                    .entry(o.book_id)
+                    .or_default()
+                    .insert(o.field, o.value);
+            }
+        }
+        self.apply_overrides(&before);
+        self
+    }
+
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+
+    /// The book as in the catalog, without corrections.
+    pub fn original(&self, id: &str) -> Option<&Book> {
+        self.positions.get(id).and_then(|&i| self.base.books.get(i))
+    }
+
+    /// Fields of a book that were corrected by hand.
+    pub fn edited_fields(&self, id: &str) -> Vec<Field> {
+        self.state
+            .overrides
+            .get(id)
+            .map(|f| f.keys().copied().collect())
+            .unwrap_or_default()
     }
 
     pub fn state(&self) -> &State {
@@ -149,7 +206,9 @@ impl Session {
     }
 
     pub fn book(&self, id: &str) -> Option<&Book> {
-        self.catalog.book(id)
+        self.positions
+            .get(id)
+            .and_then(|&i| self.catalog.books.get(i))
     }
 
     pub fn progress(&self, id: &str) -> Option<&Progress> {
@@ -210,8 +269,9 @@ impl Session {
                 if spec.record && self.state != before {
                     self.record(spec.id, before.clone());
                 }
-                self.after_change(&before);
+                // Cleared first, so errors from saving stay visible.
                 self.status = None;
+                self.after_change(&before);
                 Ok(value)
             }
             Err(e) => {
@@ -281,8 +341,72 @@ impl Session {
                 self.status = Some(format!("progress not saved: {e}"));
             }
         }
-        if before.query != self.state.query {
+        let edited = before.overrides != self.state.overrides;
+        if edited {
+            self.persist_overrides(&before.overrides);
+            self.apply_overrides(&before.overrides);
+        }
+        if edited || before.query != self.state.query {
             self.refresh();
+        }
+    }
+
+    /// Writes the corrections that changed since `before` to the backend.
+    fn persist_overrides(&mut self, before: &edits::Overrides) {
+        let mut errors = Vec::new();
+        for (id, fields) in &self.state.overrides {
+            for (field, value) in fields {
+                let old = before.get(id).and_then(|f| f.get(field));
+                if old != Some(value) {
+                    let o = Override {
+                        book_id: id.clone(),
+                        field: *field,
+                        value: value.clone(),
+                    };
+                    if let Err(e) = self.backend.save_override(&o) {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+        for (id, fields) in before {
+            for field in fields.keys() {
+                let still = self
+                    .state
+                    .overrides
+                    .get(id)
+                    .is_some_and(|f| f.contains_key(field));
+                if !still && let Err(e) = self.backend.delete_override(id, *field) {
+                    errors.push(e);
+                }
+            }
+        }
+        if let Some(e) = errors.into_iter().next() {
+            self.status = Some(format!("correction not saved: {e}"));
+        }
+    }
+
+    /// Rebuilds the corrected books that changed since `before`, then the index.
+    fn apply_overrides(&mut self, before: &edits::Overrides) {
+        let mut ids: Vec<&BookId> = self.state.overrides.keys().collect();
+        ids.extend(before.keys());
+        ids.sort_unstable();
+        ids.dedup();
+        let mut changed = false;
+        for id in ids {
+            if before.get(id) == self.state.overrides.get(id) {
+                continue;
+            }
+            if let Some(&i) = self.positions.get(id)
+                && let (Some(base), Some(slot)) =
+                    (self.base.books.get(i), self.catalog.books.get_mut(i))
+            {
+                *slot = edits::edited(base, &self.state.overrides);
+                changed = true;
+            }
+        }
+        if changed {
+            self.index = Index::new(&self.catalog);
         }
     }
 
@@ -309,6 +433,7 @@ impl Session {
             "results": self.results.len(),
             "first_results": self.results().take(10).map(|b| &b.id).collect::<Vec<_>>(),
             "progress": self.state.progress.len(),
+            "edited_books": self.state.overrides.len(),
             "can_undo": self.can_undo(),
             "can_redo": self.can_redo(),
             "status": self.status,
