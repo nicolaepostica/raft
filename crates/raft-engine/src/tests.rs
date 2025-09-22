@@ -1,15 +1,21 @@
 use std::sync::{Arc, Mutex};
 
 use proptest::prelude::*;
+use raft_doc::edits::{Field, Override};
 use raft_doc::{Book, Catalog, Category, Format, Progress, Route};
 use serde_json::{Value, json};
 
 use crate::{Backend, EngineError, NullBackend, Session, registry};
 
+/// (book id, field, value; None = deleted)
+type StoredEdit = (String, Field, Option<String>);
+
 #[derive(Default, Clone)]
 struct Recorder {
     saved: Arc<Mutex<Vec<Progress>>>,
     opened: Arc<Mutex<Vec<String>>>,
+    overrides: Arc<Mutex<Vec<StoredEdit>>>,
+    fail_overrides: bool,
 }
 
 impl Backend for Recorder {
@@ -39,6 +45,23 @@ impl Backend for Recorder {
     }
     fn now(&self) -> i64 {
         1_700_000_000
+    }
+    fn save_override(&self, o: &Override) -> Result<(), String> {
+        if self.fail_overrides {
+            return Err("disk full".into());
+        }
+        self.overrides
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((o.book_id.clone(), o.field, Some(o.value.clone())));
+        Ok(())
+    }
+    fn delete_override(&self, id: &str, field: Field) -> Result<(), String> {
+        self.overrides
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((id.to_owned(), field, None));
+        Ok(())
     }
 }
 
@@ -176,6 +199,105 @@ fn null_backend_works() {
     assert!(s.run("book.read", &json!({"id": "b"})).is_err());
 }
 
+#[test]
+fn editing_metadata_changes_search_persists_and_undoes() {
+    let (mut s, rec) = session();
+    s.run(
+        "book.edit",
+        &json!({"id": "a", "fields": {"title": "Ржавчина в деле", "language": "ru",
+            "authors": ["Тим Макнамара"], "year": null}}),
+    )
+    .unwrap();
+    let b = s.book("a").unwrap();
+    assert_eq!(b.title, "Ржавчина в деле");
+    assert_eq!(b.language, "ru");
+    assert_eq!(b.year, None);
+    s.run("search.set", &json!({"text": "ржавчина"})).unwrap();
+    assert_eq!(s.result_count(), 1);
+    assert_eq!(rec.overrides.lock().unwrap().len(), 4);
+    assert_eq!(s.edited_fields("a").len(), 4);
+
+    s.run("search.set", &json!({"text": ""})).unwrap();
+    s.run("edit.undo", &Value::Null).unwrap();
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert_eq!(s.book("a").unwrap().title, "Rust in Action");
+    assert!(s.edited_fields("a").is_empty());
+    // Undo deleted the four stored corrections.
+    assert_eq!(
+        rec.overrides
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|o| o.2.is_none())
+            .count(),
+        4
+    );
+}
+
+#[test]
+fn edits_are_validated_and_reset() {
+    let (mut s, _) = session();
+    let bad = [
+        json!({"id": "a", "fields": {"nope": "x"}}),
+        json!({"id": "a", "fields": {"year": "soon"}}),
+        json!({"id": "a", "fields": {"year": 99999}}),
+        json!({"id": "a", "fields": {"language": "Russian"}}),
+        json!({"id": "a", "fields": {"categories": ["no-such-category"]}}),
+        json!({"id": "a", "fields": {"title": "   "}}),
+        json!({"id": "a", "fields": {}}),
+        json!({"id": "a", "fields": {"title": "x".repeat(20_000)}}),
+        json!({"id": "zzz", "fields": {"title": "x"}}),
+    ];
+    for p in bad {
+        assert!(s.run("book.edit", &p).is_err(), "{p}");
+    }
+    // Comma-separated lists are accepted; a value equal to the catalog's is no override.
+    s.run(
+        "book.edit",
+        &json!({"id": "a", "fields": {"tags": "rust, systems", "title": "Rust in Action"}}),
+    )
+    .unwrap();
+    assert_eq!(s.book("a").unwrap().tags, vec!["rust", "systems"]);
+    assert_eq!(s.edited_fields("a"), vec![Field::Tags]);
+    s.run(
+        "book.edit",
+        &json!({"id": "a", "fields": {"categories": ["fiction", "go-rust"]}}),
+    )
+    .unwrap();
+    s.run("book.edit.reset", &json!({"id": "a", "field": "tags"}))
+        .unwrap();
+    assert_eq!(s.edited_fields("a"), vec![Field::Categories]);
+    s.run("book.edit.reset", &json!({"id": "a"})).unwrap();
+    assert!(s.edited_fields("a").is_empty());
+    assert!(s.run("book.edit.reset", &json!({"id": "a"})).is_err());
+}
+
+#[test]
+fn stored_overrides_load_and_save_errors_reach_the_status() {
+    let rec = Recorder {
+        fail_overrides: true,
+        ..Recorder::default()
+    };
+    let stored = vec![Override {
+        book_id: "b".into(),
+        field: Field::Year,
+        value: "1869".into(),
+    }];
+    let mut s = Session::new(catalog(), vec![], Box::new(rec)).with_overrides(stored);
+    assert_eq!(s.book("b").unwrap().year, Some(1869));
+    s.run(
+        "book.edit",
+        &json!({"id": "b", "fields": {"title": "Война и мир (1869)"}}),
+    )
+    .unwrap();
+    assert!(
+        s.status
+            .as_deref()
+            .unwrap_or_default()
+            .contains("disk full")
+    );
+}
+
 proptest! {
     #[test]
     fn arbitrary_commands_never_panic(
@@ -188,6 +310,7 @@ proptest! {
             let params = json!({
                 "text": text, "id": if b { "a" } else { "b" }, "slug": text, "language": text,
                 "format": text, "min": n, "max": n, "page": n, "sort": text, "on": b,
+                "field": text, "fields": { "title": text, "year": n, "authors": [text], "language": text, "tags": text },
             });
             let _ = s.run(spec.id, &params);
         }
