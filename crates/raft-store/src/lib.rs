@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use raft_doc::edits::{Field, Override};
 use raft_doc::sanitize::{BookParts, book_from_parts, json_list};
 use raft_doc::{BookId, Catalog, Category, Progress};
 use rusqlite::{Connection, OpenFlags, params};
@@ -165,6 +166,13 @@ impl UserDb {
                  page INTEGER,
                  percent REAL NOT NULL DEFAULT 0,
                  updated_at INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS overrides(
+                 book_id TEXT NOT NULL,
+                 field TEXT NOT NULL,
+                 value TEXT NOT NULL,
+                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                 PRIMARY KEY (book_id, field)
              );",
         )?;
         Ok(Self { conn })
@@ -208,6 +216,49 @@ impl UserDb {
              ON CONFLICT(book_id) DO UPDATE SET position = ?2, page = ?3, percent = ?4,
                  updated_at = ?5",
             params![p.book_id, p.position, p.page, percent, p.updated_at],
+        )?;
+        Ok(())
+    }
+
+    /// Every stored metadata correction; rows with an unknown field are skipped.
+    pub fn load_overrides(&self) -> Result<Vec<Override>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT book_id, field, value FROM overrides ORDER BY book_id, field")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .filter_map(Result::ok)
+            .filter_map(|(book_id, field, value)| {
+                Some(Override {
+                    book_id,
+                    field: Field::from_slug(&field)?,
+                    value,
+                })
+            })
+            .collect();
+        Ok(rows)
+    }
+
+    pub fn save_override(&self, o: &Override) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO overrides(book_id, field, value, updated_at)
+             VALUES (?1, ?2, ?3, strftime('%s', 'now'))
+             ON CONFLICT(book_id, field) DO UPDATE SET value = ?3, updated_at = strftime('%s', 'now')",
+            params![o.book_id, o.field.slug(), o.value],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_override(&self, book_id: &str, field: Field) -> Result<(), StoreError> {
+        self.conn.execute(
+            "DELETE FROM overrides WHERE book_id = ?1 AND field = ?2",
+            params![book_id, field.slug()],
         )?;
         Ok(())
     }
@@ -291,6 +342,38 @@ mod tests {
         assert!(all[0].percent.abs() < f32::EPSILON);
         db.delete_progress("a").unwrap();
         assert!(db.load_progress().unwrap().is_empty());
+    }
+
+    #[test]
+    fn overrides_round_trip_and_skip_unknown_fields() {
+        let db = UserDb::in_memory().unwrap();
+        let o = Override {
+            book_id: "a".into(),
+            field: Field::Language,
+            value: "ru".into(),
+        };
+        db.save_override(&o).unwrap();
+        db.save_override(&Override {
+            value: "uk".into(),
+            ..o.clone()
+        })
+        .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO overrides(book_id, field, value) VALUES ('a', 'colour', 'x')",
+                [],
+            )
+            .unwrap();
+        let all = db.load_overrides().unwrap();
+        assert_eq!(
+            all,
+            vec![Override {
+                value: "uk".into(),
+                ..o
+            }]
+        );
+        db.delete_override("a", Field::Language).unwrap();
+        assert!(db.load_overrides().unwrap().is_empty());
     }
 
     proptest! {
