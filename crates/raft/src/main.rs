@@ -150,8 +150,9 @@ fn main() -> Result<()> {
     let backend = native::NativeBackend::open(&opts.library, &opts.data)?;
     let catalog = backend.load_catalog()?;
     let progress = backend.load_progress()?;
+    let overrides = backend.load_overrides()?;
     let files = native::NativeFiles::new(&opts.library);
-    let session = Session::new(catalog, progress, Box::new(backend));
+    let session = Session::new(catalog, progress, Box::new(backend)).with_overrides(overrides);
     let ui = RaftUi::new(session, Box::new(files));
 
     let viewport = egui::ViewportBuilder::default()
