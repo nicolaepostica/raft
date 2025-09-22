@@ -1,5 +1,6 @@
 //! The command registry: every user-visible action, with its menu, shortcut and params.
 
+use raft_doc::edits::{self, Field};
 use raft_doc::{Format, Progress, Route, Sort};
 use serde_json::{Value, json};
 
@@ -242,6 +243,18 @@ static REGISTRY: &[CommandSpec] = &[
         params: r#"{"id": string?} (default: current book)"#,
         ..spec("progress.reset", "Șterge progresul", progress_reset)
     },
+    CommandSpec {
+        params: r#"{"id": string?, "fields": {"title"|"authors"|"year"|"language"|"publisher"|"isbn"|"categories"|"tags"|"description": value}} — lists as arrays or comma-separated text, year as int, null or ""#,
+        ..spec("book.edit", "Corectează metadatele", book_edit)
+    },
+    CommandSpec {
+        params: r#"{"id": string?, "field": string?} (no field: every correction of the book)"#,
+        ..spec(
+            "book.edit.reset",
+            "Revino la datele din catalog",
+            book_edit_reset,
+        )
+    },
 ];
 
 /// All registered commands.
@@ -471,6 +484,167 @@ fn progress_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = book_id(s, p)?;
     if s.state.progress.remove(&id).is_none() {
         return Err(EngineError::NotFound(format!("no progress for `{id}`")));
+    }
+    Ok(Value::Null)
+}
+
+/// Longest accepted text field (title, publisher …), in bytes.
+const MAX_SHORT: usize = 1024;
+
+fn bad(msg: impl Into<String>) -> EngineError {
+    EngineError::BadParams(msg.into())
+}
+
+/// Checks a value for `field` and returns its canonical form.
+fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError> {
+    let name = field.slug();
+    let text = |max: usize| -> Result<String, EngineError> {
+        let t = match v {
+            Value::String(t) => t.trim().to_owned(),
+            Value::Null => String::new(),
+            _ => return Err(bad(format!("`{name}` must be text"))),
+        };
+        if t.len() > max {
+            return Err(bad(format!("`{name}` is too long (max {max} bytes)")));
+        }
+        if t.chars().any(|c| c.is_control() && c != '\n' && c != '\t') {
+            return Err(bad(format!("`{name}` contains control characters")));
+        }
+        Ok(t)
+    };
+    let list = || -> Result<Vec<String>, EngineError> {
+        let items: Vec<String> = match v {
+            Value::Array(items) => items
+                .iter()
+                .map(|i| i.as_str().map(|t| t.trim().to_owned()))
+                .collect::<Option<_>>()
+                .ok_or_else(|| bad(format!("`{name}` must be a list of text")))?,
+            Value::String(t) => t.split([',', ';']).map(|p| p.trim().to_owned()).collect(),
+            Value::Null => Vec::new(),
+            _ => return Err(bad(format!("`{name}` must be a list"))),
+        };
+        let items: Vec<String> = items.into_iter().filter(|i| !i.is_empty()).collect();
+        if items.len() > raft_doc::sanitize::MAX_LIST {
+            return Err(bad(format!("`{name}` has too many items")));
+        }
+        if items.iter().any(|i| i.len() > MAX_SHORT) {
+            return Err(bad(format!("an item of `{name}` is too long")));
+        }
+        Ok(items)
+    };
+    let json_list =
+        |items: Vec<String>| serde_json::to_string(&items).map_err(|e| bad(e.to_string()));
+    match field {
+        Field::Title => {
+            let t = text(MAX_SHORT)?;
+            if t.is_empty() {
+                return Err(bad(
+                    "the title cannot be empty (reset it to use the catalog's)",
+                ));
+            }
+            Ok(t)
+        }
+        Field::Publisher | Field::Isbn => text(MAX_SHORT),
+        Field::Description => text(edits::MAX_VALUE),
+        Field::Language => {
+            let t = text(8)?.to_lowercase();
+            if !(t.is_empty()
+                || (2..=3).contains(&t.len()) && t.chars().all(|c| c.is_ascii_lowercase()))
+            {
+                return Err(bad(
+                    "`language` must be an ISO 639 code such as ru, en or ro",
+                ));
+            }
+            Ok(t)
+        }
+        Field::Year => {
+            let y = match v {
+                Value::Null => return Ok(String::new()),
+                Value::String(t) if t.trim().is_empty() => return Ok(String::new()),
+                Value::String(t) => t
+                    .trim()
+                    .parse::<i64>()
+                    .map_err(|_| bad("`year` must be a number"))?,
+                Value::Number(n) => n
+                    .as_i64()
+                    .ok_or_else(|| bad("`year` must be a whole number"))?,
+                _ => return Err(bad("`year` must be a number")),
+            };
+            if !(1000..=2100).contains(&y) {
+                return Err(bad("`year` must be between 1000 and 2100"));
+            }
+            Ok(y.to_string())
+        }
+        Field::Authors | Field::Tags => json_list(list()?),
+        Field::Categories => {
+            let items = list()?;
+            if let Some(unknown) = items
+                .iter()
+                .find(|c| !s.catalog.categories.iter().any(|k| &k.slug == *c))
+            {
+                return Err(EngineError::NotFound(format!("category `{unknown}`")));
+            }
+            json_list(items)
+        }
+    }
+}
+
+fn book_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    let fields = p
+        .get("fields")
+        .and_then(Value::as_object)
+        .ok_or_else(|| bad("missing `fields` (an object of field: value)"))?;
+    if fields.is_empty() {
+        return Err(bad("`fields` is empty"));
+    }
+    let mut changes = Vec::new();
+    for (name, v) in fields {
+        let field = Field::from_slug(name).ok_or_else(|| bad(format!("unknown field `{name}`")))?;
+        changes.push((field, canonical(s, field, v)?));
+    }
+    let original = s
+        .original(&id)
+        .cloned()
+        .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
+    let entry = s.state.overrides.entry(id.clone()).or_default();
+    for (field, value) in changes {
+        // A value equal to the catalog's is not a correction.
+        if edits::field_value(&original, field) == value {
+            entry.remove(&field);
+        } else {
+            entry.insert(field, value);
+        }
+    }
+    if entry.is_empty() {
+        s.state.overrides.remove(&id);
+    }
+    Ok(json!({ "edited": s.edited_fields(&id).iter().map(|f| f.slug()).collect::<Vec<_>>() }))
+}
+
+fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    let field = opt_str(p, "field")?
+        .map(|f| Field::from_slug(f).ok_or_else(|| bad(format!("unknown field `{f}`"))))
+        .transpose()?;
+    let fields = s
+        .state
+        .overrides
+        .get_mut(&id)
+        .ok_or_else(|| EngineError::NotFound(format!("no corrections for `{id}`")))?;
+    match field {
+        Some(f) => {
+            if fields.remove(&f).is_none() {
+                return Err(EngineError::NotFound(format!(
+                    "`{}` is not corrected",
+                    f.slug()
+                )));
+            }
+        }
+        None => fields.clear(),
+    }
+    if fields.is_empty() {
+        s.state.overrides.remove(&id);
     }
     Ok(Value::Null)
 }
