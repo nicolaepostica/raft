@@ -1,5 +1,6 @@
 //! Raft data model (layer 1): plain data with serde, no logic beyond small helpers.
 
+pub mod edits;
 pub mod sanitize;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -211,4 +212,6 @@ pub struct State {
     pub route: Route,
     pub query: Query,
     pub progress: BTreeMap<BookId, Progress>,
+    /// Manual metadata corrections.
+    pub overrides: edits::Overrides,
 }
