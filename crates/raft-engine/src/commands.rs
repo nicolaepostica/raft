@@ -244,6 +244,10 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("progress.reset", "Șterge progresul", progress_reset)
     },
     CommandSpec {
+        params: r#"{"id": string?} (default: current book)"#,
+        ..spec("view.edit", "Corectează metadatele", view_edit)
+    },
+    CommandSpec {
         params: r#"{"id": string?, "fields": {"title"|"authors"|"year"|"language"|"publisher"|"isbn"|"categories"|"tags"|"description": value}} — lists as arrays or comma-separated text, year as int, null or ""#,
         ..spec("book.edit", "Corectează metadatele", book_edit)
     },
@@ -363,7 +367,7 @@ fn sort_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 
 fn view_library(s: &mut Session, _: &Value) -> Result<Value, EngineError> {
     s.state.route = match &s.state.route {
-        Route::Reader { id } => Route::Book { id: id.clone() },
+        Route::Reader { id } | Route::Edit { id } => Route::Book { id: id.clone() },
         _ => Route::Library,
     };
     Ok(Value::Null)
@@ -589,6 +593,12 @@ fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError
     }
 }
 
+fn view_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    s.state.route = Route::Edit { id };
+    Ok(Value::Null)
+}
+
 fn book_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = book_id(s, p)?;
     let fields = p
@@ -618,6 +628,9 @@ fn book_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     }
     if entry.is_empty() {
         s.state.overrides.remove(&id);
+    }
+    if s.state.route == (Route::Edit { id: id.clone() }) {
+        s.state.route = Route::Book { id: id.clone() };
     }
     Ok(json!({ "edited": s.edited_fields(&id).iter().map(|f| f.slug()).collect::<Vec<_>>() }))
 }
