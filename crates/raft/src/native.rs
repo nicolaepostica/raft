@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
+use raft_doc::edits::{Field, Override};
 use raft_doc::{Book, BookId, Catalog, Progress};
 use raft_engine::Backend;
 use raft_store::{CatalogDb, UserDb};
@@ -39,6 +40,10 @@ impl NativeBackend {
 
     pub fn load_progress(&self) -> Result<Vec<Progress>> {
         Ok(self.user.load_progress()?)
+    }
+
+    pub fn load_overrides(&self) -> Result<Vec<Override>> {
+        Ok(self.user.load_overrides()?)
     }
 }
 
@@ -79,6 +84,16 @@ impl Backend for NativeBackend {
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("xdg-open failed: {e}"))
+    }
+
+    fn save_override(&self, o: &Override) -> Result<(), String> {
+        self.user.save_override(o).map_err(|e| e.to_string())
+    }
+
+    fn delete_override(&self, id: &str, field: Field) -> Result<(), String> {
+        self.user
+            .delete_override(id, field)
+            .map_err(|e| e.to_string())
     }
 
     fn now(&self) -> i64 {
