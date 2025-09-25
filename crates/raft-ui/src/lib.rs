@@ -5,6 +5,7 @@
 
 mod book;
 mod covers;
+mod edit;
 mod library;
 mod reader;
 
@@ -42,6 +43,8 @@ pub struct RaftUi {
     files: Box<dyn Files>,
     covers: covers::Covers,
     reader: reader::ReaderView,
+    /// Open metadata correction form, if any.
+    edit: Option<edit::Draft>,
     search: String,
     focus_search: bool,
 }
@@ -54,6 +57,7 @@ impl RaftUi {
             files,
             covers: covers::Covers::default(),
             reader: reader::ReaderView::default(),
+            edit: None,
             search,
             focus_search: false,
         }
@@ -82,7 +86,7 @@ impl RaftUi {
                     .show(ui, |ui| library::filters(self, ui));
                 egui::CentralPanel::default().show(ui, |ui| library::library(self, ui));
             }
-            Route::Book { id } => {
+            Route::Book { id } | Route::Edit { id } => {
                 egui::CentralPanel::default().show(ui, |ui| book::book_page(self, ui, &id));
             }
             Route::Reader { id } => {
