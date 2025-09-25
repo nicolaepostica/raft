@@ -27,6 +27,10 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             }
             ui.add_space(16.0);
             ui.vertical(|ui| {
+                if matches!(app.session.route(), raft_doc::Route::Edit { .. }) {
+                    crate::edit::form(app, ui, &book);
+                    return;
+                }
                 ui.heading(book.display_title());
                 if !book.authors.is_empty() {
                     ui.label(egui::RichText::new(book.authors_line()).size(16.0));
@@ -86,7 +90,20 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     if ui.button("Deschide în aplicația externă").clicked() {
                         app.act("book.open_external", json!({ "id": book.id }));
                     }
+                    if ui.button("Corectează metadatele").clicked() {
+                        app.act("view.edit", json!({ "id": book.id }));
+                    }
                 });
+                let edited = app.session.edited_fields(&book.id).len();
+                if edited > 0 {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{edited} câmp(uri) corectate de tine; restul vin din catalog"
+                        ))
+                        .small()
+                        .weak(),
+                    );
+                }
                 if let Some(p) = app.session.progress(&book.id).cloned() {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
