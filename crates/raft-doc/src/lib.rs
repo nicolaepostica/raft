@@ -204,6 +204,10 @@ pub enum Route {
     Reader {
         id: BookId,
     },
+    /// The metadata correction form of a book.
+    Edit {
+        id: BookId,
+    },
 }
 
 /// The user's state that commands change and history can restore.
