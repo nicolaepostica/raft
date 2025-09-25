@@ -228,7 +228,7 @@ impl Session {
     /// The book of the current route (book page or reader).
     pub fn current_book(&self) -> Option<&Book> {
         match &self.state.route {
-            Route::Book { id } | Route::Reader { id } => self.catalog.book(id),
+            Route::Book { id } | Route::Reader { id } | Route::Edit { id } => self.book(id),
             Route::Library => None,
         }
     }
