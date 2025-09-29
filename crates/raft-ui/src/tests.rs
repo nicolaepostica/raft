@@ -107,3 +107,55 @@ proptest::proptest! {
         let _ = crate::decode_image(&bytes);
     }
 }
+
+#[test]
+fn correcting_metadata_from_the_book_page() {
+    let mut h = harness();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Corectează metadatele").click();
+    h.run();
+    h.get_by_label("Titlu").click();
+    h.run();
+    h.get_by_label("Titlu").type_text(" (ediția a 2-a)");
+    h.run();
+    h.get_by_label("Salvează").click();
+    h.run();
+    let s = &h.state().session;
+    assert_eq!(
+        s.book("a").map(|b| b.title.as_str()),
+        Some("Rust in Action (ediția a 2-a)")
+    );
+    assert_eq!(s.edited_fields("a"), vec![raft_doc::edits::Field::Title]);
+    assert_eq!(s.route(), &Route::Book { id: "a".into() });
+    h.get_by_label("1 câmp(uri) corectate de tine; restul vin din catalog");
+    h.state_mut()
+        .run("edit.undo", serde_json::Value::Null)
+        .unwrap();
+    h.run();
+    assert_eq!(
+        h.state().session.book("a").map(|b| b.title.as_str()),
+        Some("Rust in Action")
+    );
+}
+
+#[test]
+fn draft_changes_only_contain_edited_fields() {
+    let book = Book {
+        id: "a".into(),
+        title: "T".into(),
+        categories: vec!["python".into(), "career".into()],
+        ..Book::default()
+    };
+    let mut d = crate::edit::Draft::from_book(&book);
+    assert!(d.changes(&book).is_empty());
+    d.year = "2020".into();
+    d.categories.remove("career");
+    d.categories.insert("devops".into());
+    let c = d.changes(&book);
+    assert_eq!(c.len(), 2);
+    assert_eq!(c["year"], "2020");
+    assert_eq!(c["categories"], serde_json::json!(["python", "devops"]));
+}
