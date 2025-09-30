@@ -29,8 +29,14 @@ pub fn parse(bytes: &[u8]) -> TextBook {
             match name.as_str() {
                 "body" => {
                     b.flush(Kind::Normal);
-                    if let Some(kind) = attr(tag, "name").filter(|n| n == "notes" || n == "comments") {
-                        b.chapter(if kind == "notes" { "Note".into() } else { "Comentarii".into() });
+                    if let Some(kind) =
+                        attr(tag, "name").filter(|n| n == "notes" || n == "comments")
+                    {
+                        b.chapter(if kind == "notes" {
+                            "Note".into()
+                        } else {
+                            "Comentarii".into()
+                        });
                     }
                 }
                 "section" => {
@@ -90,7 +96,10 @@ pub fn parse(bytes: &[u8]) -> TextBook {
                     if !title.is_empty() {
                         let level = u8::try_from(sections.max(1)).unwrap_or(6);
                         b.chapter(title.clone());
-                        b.block(Block::Heading { level: level.min(6), text: title });
+                        b.block(Block::Heading {
+                            level: level.min(6),
+                            text: title,
+                        });
                     }
                 }
                 "p" | "text-author" | "td" | "th" if !in_title => {
