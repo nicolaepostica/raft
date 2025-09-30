@@ -40,16 +40,23 @@ impl Zip<'_> {
 }
 
 pub fn parse(bytes: &[u8]) -> Result<TextBook, TextError> {
-    let archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| TextError::Epub(e.to_string()))?;
+    let archive =
+        ZipArchive::new(Cursor::new(bytes)).map_err(|e| TextError::Epub(e.to_string()))?;
     if archive.len() > MAX_ENTRIES {
-        return Err(TextError::Epub(format!("too many entries ({})", archive.len())));
+        return Err(TextError::Epub(format!(
+            "too many entries ({})",
+            archive.len()
+        )));
     }
     let mut zip = Zip { archive, read: 0 };
     let container = zip
         .read("META-INF/container.xml")
         .ok_or_else(|| TextError::Epub("no META-INF/container.xml".into()))?;
-    let opf_path = rootfile(&decode(&container)).ok_or_else(|| TextError::Epub("no rootfile in container.xml".into()))?;
-    let opf = zip.read(&opf_path).ok_or_else(|| TextError::Epub(format!("cannot read {opf_path}")))?;
+    let opf_path = rootfile(&decode(&container))
+        .ok_or_else(|| TextError::Epub("no rootfile in container.xml".into()))?;
+    let opf = zip
+        .read(&opf_path)
+        .ok_or_else(|| TextError::Epub(format!("cannot read {opf_path}")))?;
     let package = Package::parse(&decode(&opf));
     let base = opf_path.rsplit_once('/').map_or("", |(dir, _)| dir);
 
@@ -69,7 +76,11 @@ pub fn parse(bytes: &[u8]) -> Result<TextBook, TextError> {
         b.chapter(String::new());
         let title = document(&decode(&doc), &mut b);
         if let Some(last) = b.book.chapters.last_mut() {
-            last.title = if title.is_empty() { format!("Partea {}", n + 1) } else { title };
+            last.title = if title.is_empty() {
+                format!("Partea {}", n + 1)
+            } else {
+                title
+            };
         }
     }
     let mut book = b.finish();
@@ -133,7 +144,11 @@ impl Package {
 fn join(base: &str, href: &str) -> String {
     let href = href.split('#').next().unwrap_or_default();
     let href = percent_decode(href);
-    let mut parts: Vec<&str> = if base.is_empty() { Vec::new() } else { base.split('/').collect() };
+    let mut parts: Vec<&str> = if base.is_empty() {
+        Vec::new()
+    } else {
+        base.split('/').collect()
+    };
     for seg in href.split('/') {
         match seg {
             "" | "." => {}
@@ -169,9 +184,30 @@ fn percent_decode(s: &str) -> String {
 fn is_block(name: &str) -> bool {
     matches!(
         name,
-        "p" | "div" | "li" | "dt" | "dd" | "blockquote" | "pre" | "td" | "th" | "tr" | "table" | "ul" | "ol"
-            | "dl" | "figure" | "figcaption" | "section" | "article" | "header" | "footer" | "aside"
-            | "nav" | "body" | "address" | "center"
+        "p" | "div"
+            | "li"
+            | "dt"
+            | "dd"
+            | "blockquote"
+            | "pre"
+            | "td"
+            | "th"
+            | "tr"
+            | "table"
+            | "ul"
+            | "ol"
+            | "dl"
+            | "figure"
+            | "figcaption"
+            | "section"
+            | "article"
+            | "header"
+            | "footer"
+            | "aside"
+            | "nav"
+            | "body"
+            | "address"
+            | "center"
     )
 }
 
@@ -197,7 +233,12 @@ fn document(xml: &str, b: &mut Builder) -> String {
     walk(xml, MAX_EVENTS, |item| match item {
         Item::Start { name, .. } => {
             // Inside a skipped element every child counts, so its end is found again.
-            if skip > 0 || matches!(name.as_str(), "head" | "script" | "style" | "svg" | "math" | "title") {
+            if skip > 0
+                || matches!(
+                    name.as_str(),
+                    "head" | "script" | "style" | "svg" | "math" | "title"
+                )
+            {
                 skip += 1;
                 return;
             }
@@ -205,7 +246,13 @@ fn document(xml: &str, b: &mut Builder) -> String {
                 in_body = true;
             }
             if heading_level(&name).is_some() || is_block(&name) {
-                let kind = if pre > 0 { Kind::Pre } else if quote > 0 { Kind::Quote } else { Kind::Normal };
+                let kind = if pre > 0 {
+                    Kind::Pre
+                } else if quote > 0 {
+                    Kind::Quote
+                } else {
+                    Kind::Normal
+                };
                 b.flush(kind);
             }
             match name.as_str() {
@@ -237,7 +284,13 @@ fn document(xml: &str, b: &mut Builder) -> String {
                     title = t;
                 }
             } else if is_block(&name) {
-                let kind = if pre > 0 { Kind::Pre } else if quote > 0 { Kind::Quote } else { Kind::Normal };
+                let kind = if pre > 0 {
+                    Kind::Pre
+                } else if quote > 0 {
+                    Kind::Quote
+                } else {
+                    Kind::Normal
+                };
                 b.flush(kind);
             }
             match name.as_str() {
