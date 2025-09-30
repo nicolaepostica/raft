@@ -196,6 +196,7 @@ fn document(xml: &str, b: &mut Builder) -> String {
     let mut in_body = !xml.contains("<body");
     walk(xml, MAX_EVENTS, |item| match item {
         Item::Start { name, .. } => {
+            // Inside a skipped element every child counts, so its end is found again.
             if skip > 0 || matches!(name.as_str(), "head" | "script" | "style" | "svg" | "math" | "title") {
                 skip += 1;
                 return;
@@ -227,9 +228,7 @@ fn document(xml: &str, b: &mut Builder) -> String {
         }
         Item::End { name } => {
             if skip > 0 {
-                if matches!(name.as_str(), "head" | "script" | "style" | "svg" | "math" | "title") {
-                    skip -= 1;
-                }
+                skip -= 1;
                 return;
             }
             if let Some(level) = heading_level(&name) {
