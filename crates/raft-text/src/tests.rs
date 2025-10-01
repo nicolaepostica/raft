@@ -43,7 +43,7 @@ fn reads_fb2_structure() {
     assert!(b.blocks.contains(&Block::Break));
     assert!(!texts.iter().any(|t| t.contains("AAAA")));
     let titles: Vec<&str> = b.chapters.iter().map(|c| c.title.as_str()).collect();
-    assert_eq!(titles, ["Ёжик в тумане", "Глава 1. Начало", "1.1", "Note"]);
+    assert_eq!(titles, ["Ёжик в тумане", "Глава 1. Начало", "1.1", "Note", "1"]);
     // Chapter starts point at their heading.
     for c in &b.chapters {
         assert!(
@@ -223,17 +223,3 @@ fn parses_the_library() {
     );
 }
 
-#[test]
-#[ignore = "debug"]
-fn debug_zip_entry() {
-    use std::io::Read;
-    let bytes = std::fs::read("/backup/books/Katz M., Moore K., Ngo V. - Flutter Apprentice (3rd Edition) - 2022.epub").unwrap();
-    let mut a = zip::ZipArchive::new(std::io::Cursor::new(&bytes[..])).unwrap();
-    match a.by_name("META-INF/container.xml") {
-        Ok(mut f) => {
-            let mut s = Vec::new();
-            println!("read: {:?}", f.read_to_end(&mut s));
-        }
-        Err(e) => println!("by_name: {e:?}"),
-    }
-}
