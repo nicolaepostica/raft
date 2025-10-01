@@ -28,16 +28,28 @@ fn reads_fb2_structure() {
     let b = parse(FB2.as_bytes(), Format::Fb2).unwrap();
     assert_eq!(b.title, "Ёжик в тумане");
     let texts: Vec<&str> = b.blocks.iter().map(Block::text).collect();
-    assert!(texts.contains(&"Первый абзац с курсивом и пробелом."), "{texts:?}");
-    assert!(b.blocks.contains(&Block::Paragraph { kind: Kind::Quote, text: "Эпиграф".into() }));
-    assert!(b.blocks.contains(&Block::Paragraph { kind: Kind::Verse, text: "строка один".into() }));
+    assert!(
+        texts.contains(&"Первый абзац с курсивом и пробелом."),
+        "{texts:?}"
+    );
+    assert!(b.blocks.contains(&Block::Paragraph {
+        kind: Kind::Quote,
+        text: "Эпиграф".into()
+    }));
+    assert!(b.blocks.contains(&Block::Paragraph {
+        kind: Kind::Verse,
+        text: "строка один".into()
+    }));
     assert!(b.blocks.contains(&Block::Break));
     assert!(!texts.iter().any(|t| t.contains("AAAA")));
     let titles: Vec<&str> = b.chapters.iter().map(|c| c.title.as_str()).collect();
     assert_eq!(titles, ["Ёжик в тумане", "Глава 1. Начало", "1.1", "Note"]);
     // Chapter starts point at their heading.
     for c in &b.chapters {
-        assert!(matches!(b.blocks.get(c.start), Some(Block::Heading { .. })), "{c:?}");
+        assert!(
+            matches!(b.blocks.get(c.start), Some(Block::Heading { .. })),
+            "{c:?}"
+        );
     }
 }
 
@@ -54,14 +66,18 @@ fn damaged_fb2_keeps_what_was_read() {
     let cut = &FB2[..FB2.find("<poem>").unwrap()];
     let b = parse(cut.as_bytes(), Format::Fb2).unwrap();
     assert!(b.blocks.iter().any(|x| x.text().starts_with("Первый")));
-    assert_eq!(parse(b"<FictionBook></FictionBook>", Format::Fb2), Err(TextError::Empty));
+    assert_eq!(
+        parse(b"<FictionBook></FictionBook>", Format::Fb2),
+        Err(TextError::Empty)
+    );
 }
 
 fn epub(files: &[(&str, &str)]) -> Vec<u8> {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut z = zip::ZipWriter::new(&mut buf);
-        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
         for (name, body) in files {
             z.start_file(*name, opts).unwrap();
             z.write_all(body.as_bytes()).unwrap();
@@ -95,9 +111,17 @@ fn reads_epub_spine_in_order() {
     assert_eq!(b.title, "Rust & Co");
     let texts: Vec<&str> = b.blocks.iter().map(Block::text).collect();
     assert_eq!(texts.first(), Some(&"Ownership"));
-    assert!(texts.contains(&"Every value has an owner—exactly one."), "{texts:?}");
-    assert!(b.blocks.contains(&Block::Paragraph { kind: Kind::Quote, text: "Fearless concurrency".into() }));
-    assert!(b.blocks.iter().any(|x| matches!(x, Block::Paragraph { kind: Kind::Pre, text } if text.contains("    println!"))));
+    assert!(
+        texts.contains(&"Every value has an owner—exactly one."),
+        "{texts:?}"
+    );
+    assert!(b.blocks.contains(&Block::Paragraph {
+        kind: Kind::Quote,
+        text: "Fearless concurrency".into()
+    }));
+    assert!(b.blocks.iter().any(
+        |x| matches!(x, Block::Paragraph { kind: Kind::Pre, text } if text.contains("    println!"))
+    ));
     assert!(texts.contains(&"line one\nline two"));
     assert!(texts.contains(&"Loose bold text"));
     assert!(!texts.iter().any(|t| t.contains("skip me")));
@@ -107,17 +131,29 @@ fn reads_epub_spine_in_order() {
 
 #[test]
 fn bad_epubs_are_errors() {
-    assert!(matches!(parse(b"not a zip", Format::Epub), Err(TextError::Epub(_))));
+    assert!(matches!(
+        parse(b"not a zip", Format::Epub),
+        Err(TextError::Epub(_))
+    ));
     let no_container = epub(&[("mimetype", "application/epub+zip")]);
-    assert!(matches!(parse(&no_container, Format::Epub), Err(TextError::Epub(_))));
-    assert!(matches!(parse(b"%PDF", Format::Pdf), Err(TextError::Unsupported("pdf"))));
+    assert!(matches!(
+        parse(&no_container, Format::Epub),
+        Err(TextError::Epub(_))
+    ));
+    assert!(matches!(
+        parse(b"%PDF", Format::Pdf),
+        Err(TextError::Unsupported("pdf"))
+    ));
 }
 
 #[test]
 fn joins_paths() {
     use crate::epub::join_for_test as join;
     assert_eq!(join("OEBPS", "text/a.xhtml"), "OEBPS/text/a.xhtml");
-    assert_eq!(join("OEBPS/text", "../img/b%20c.png#x"), "OEBPS/img/b c.png");
+    assert_eq!(
+        join("OEBPS/text", "../img/b%20c.png#x"),
+        "OEBPS/img/b c.png"
+    );
     assert_eq!(join("", "./a.html"), "a.html");
     assert_eq!(join("a", "../../../x"), "x");
 }
@@ -158,7 +194,9 @@ proptest! {
 #[test]
 #[ignore = "reads the whole library"]
 fn parses_the_library() {
-    let Ok(dir) = std::fs::read_dir("/backup/books") else { return };
+    let Ok(dir) = std::fs::read_dir("/backup/books") else {
+        return;
+    };
     let (mut ok, mut failed) = (0, Vec::new());
     for entry in dir.flatten() {
         let path = entry.path();
@@ -170,9 +208,17 @@ fn parses_the_library() {
         let bytes = std::fs::read(&path).unwrap();
         match parse(&bytes, format) {
             Ok(b) if b.blocks.len() > 20 => ok += 1,
-            Ok(b) => failed.push(format!("{}: only {} blocks", path.display(), b.blocks.len())),
+            Ok(b) => failed.push(format!(
+                "{}: only {} blocks",
+                path.display(),
+                b.blocks.len()
+            )),
             Err(e) => failed.push(format!("{}: {e}", path.display())),
         }
     }
-    println!("parsed {ok}, problems {}:\n{}", failed.len(), failed.join("\n"));
+    println!(
+        "parsed {ok}, problems {}:\n{}",
+        failed.len(),
+        failed.join("\n")
+    );
 }
