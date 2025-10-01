@@ -32,11 +32,9 @@ pub fn parse(bytes: &[u8]) -> TextBook {
                     if let Some(kind) =
                         attr(tag, "name").filter(|n| n == "notes" || n == "comments")
                     {
-                        b.chapter(if kind == "notes" {
-                            "Note".into()
-                        } else {
-                            "Comentarii".into()
-                        });
+                        let title = if kind == "notes" { "Note" } else { "Comentarii" };
+                        b.chapter(title.into());
+                        b.block(Block::Heading { level: 1, text: title.into() });
                     }
                 }
                 "section" => {
