@@ -45,8 +45,14 @@ pub enum Kind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Block {
     /// Level 1 (largest) to 6.
-    Heading { level: u8, text: String },
-    Paragraph { kind: Kind, text: String },
+    Heading {
+        level: u8,
+        text: String,
+    },
+    Paragraph {
+        kind: Kind,
+        text: String,
+    },
     /// An empty line / scene break.
     Break,
 }
@@ -135,7 +141,11 @@ impl Builder {
     /// Ends the current paragraph, if it has text.
     pub fn flush(&mut self, kind: Kind) {
         let text = std::mem::take(&mut self.text);
-        let text = if kind == Kind::Pre { text.trim_matches('\n').to_owned() } else { text.trim().to_owned() };
+        let text = if kind == Kind::Pre {
+            text.trim_matches('\n').to_owned()
+        } else {
+            text.trim().to_owned()
+        };
         if !text.is_empty() {
             self.block(Block::Paragraph { kind, text });
         }
@@ -145,7 +155,10 @@ impl Builder {
     pub fn flush_heading(&mut self, level: u8) -> String {
         let text = std::mem::take(&mut self.text).trim().replace('\n', " ");
         if !text.is_empty() {
-            self.block(Block::Heading { level: level.clamp(1, 6), text: text.clone() });
+            self.block(Block::Heading {
+                level: level.clamp(1, 6),
+                text: text.clone(),
+            });
         }
         text
     }
@@ -184,7 +197,13 @@ impl Builder {
         let n = self.book.blocks.len();
         self.book.chapters.retain(|c| c.start < n);
         if self.book.chapters.first().is_none_or(|c| c.start > 0) {
-            self.book.chapters.insert(0, Chapter { title: String::new(), start: 0 });
+            self.book.chapters.insert(
+                0,
+                Chapter {
+                    title: String::new(),
+                    start: 0,
+                },
+            );
         }
         self.book
     }
