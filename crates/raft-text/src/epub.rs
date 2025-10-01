@@ -133,9 +133,10 @@ impl Package {
                 _ => {}
             },
             Item::End { name } if name == "title" => in_title = false,
-            Item::Text(t) if in_title => p.title.push_str(t.trim()),
+            Item::Text(t) if in_title => p.title.push_str(&t),
             _ => {}
         });
+        p.title = p.title.split_whitespace().collect::<Vec<_>>().join(" ");
         p
     }
 }
