@@ -222,3 +222,18 @@ fn parses_the_library() {
         failed.join("\n")
     );
 }
+
+#[test]
+#[ignore = "debug"]
+fn debug_zip_entry() {
+    use std::io::Read;
+    let bytes = std::fs::read("/backup/books/Katz M., Moore K., Ngo V. - Flutter Apprentice (3rd Edition) - 2022.epub").unwrap();
+    let mut a = zip::ZipArchive::new(std::io::Cursor::new(&bytes[..])).unwrap();
+    match a.by_name("META-INF/container.xml") {
+        Ok(mut f) => {
+            let mut s = Vec::new();
+            println!("read: {:?}", f.read_to_end(&mut s));
+        }
+        Err(e) => println!("by_name: {e:?}"),
+    }
+}
