@@ -98,6 +98,22 @@ fn in_reader(s: &Session) -> Result<(), String> {
     }
 }
 
+fn in_paged_reader(s: &Session) -> Result<(), String> {
+    in_reader(s)?;
+    match s.current_book() {
+        Some(b) if b.format.is_paged() => Ok(()),
+        _ => Err("the open book has no pages; it scrolls".into()),
+    }
+}
+
+fn in_text_reader(s: &Session) -> Result<(), String> {
+    in_reader(s)?;
+    match s.current_book() {
+        Some(b) if b.format.is_text() => Ok(()),
+        _ => Err("the open book is not a text book".into()),
+    }
+}
+
 fn not_library(s: &Session) -> Result<(), String> {
     match s.route() {
         Route::Library => Err("already in the library".into()),
@@ -221,23 +237,29 @@ static REGISTRY: &[CommandSpec] = &[
     },
     CommandSpec {
         params: r#"{"page": int}"#,
-        enabled: in_reader,
+        enabled: in_paged_reader,
         coalesce: true,
         ..spec("reader.goto", "Mergi la pagina", reader_goto)
     },
     CommandSpec {
         shortcut: key("ArrowRight"),
-        enabled: in_reader,
+        enabled: in_paged_reader,
         coalesce: true,
         ..spec("reader.next", "Pagina următoare", |s, _| reader_step(s, 1))
     },
     CommandSpec {
         shortcut: key("ArrowLeft"),
-        enabled: in_reader,
+        enabled: in_paged_reader,
         coalesce: true,
         ..spec("reader.prev", "Pagina anterioară", |s, _| {
             reader_step(s, -1)
         })
+    },
+    CommandSpec {
+        params: r#"{"block": int, "total": int} (index of the first visible block)"#,
+        enabled: in_text_reader,
+        coalesce: true,
+        ..spec("reader.position", "Poziția în carte", reader_position)
     },
     CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
@@ -404,6 +426,10 @@ fn book_read(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         s.state.route = Route::Reader { id: id.clone() };
         let page = set_page(s, &id, i64::from(page))?;
         Ok(json!({ "reader": "paged", "page": page }))
+    } else if book.format.is_text() {
+        s.state.route = Route::Reader { id: id.clone() };
+        let block = s.state.progress.get(&id).and_then(Progress::block).unwrap_or(0);
+        Ok(json!({ "reader": "text", "block": block }))
     } else {
         s.backend
             .open_external(book)
@@ -660,4 +686,34 @@ fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         s.state.overrides.remove(&id);
     }
     Ok(Value::Null)
+}
+
+/// Most blocks a text book may report.
+const MAX_TEXT_BLOCKS: i64 = 10_000_000;
+
+fn reader_position(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = reader_book(s)?;
+    let total = opt_i64(p, "total")?.ok_or_else(|| bad("missing `total`"))?;
+    let block = opt_i64(p, "block")?.ok_or_else(|| bad("missing `block`"))?;
+    if !(1..=MAX_TEXT_BLOCKS).contains(&total) {
+        return Err(bad("`total` is out of range"));
+    }
+    let block = block.clamp(0, total - 1);
+    let percent = if total > 1 { block as f64 / (total - 1) as f64 * 100.0 } else { 100.0 };
+    let position = format!("block:{block}");
+    if s.state.progress.get(&id).and_then(|p| p.position.as_deref()) == Some(position.as_str()) {
+        return Ok(json!({ "block": block }));
+    }
+    let now = s.backend.now();
+    s.state.progress.insert(
+        id.clone(),
+        Progress {
+            book_id: id,
+            page: None,
+            position: Some(position),
+            percent: percent as f32,
+            updated_at: now,
+        },
+    );
+    Ok(json!({ "block": block }))
 }
