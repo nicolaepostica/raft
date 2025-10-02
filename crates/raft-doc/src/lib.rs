@@ -51,6 +51,11 @@ impl Format {
         matches!(self, Self::Pdf | Self::Djvu)
     }
 
+    /// Formats read as reflowable text (text reader).
+    pub fn is_text(self) -> bool {
+        matches!(self, Self::Epub | Self::Fb2)
+    }
+
     pub const ALL: [Format; 5] = [Self::Pdf, Self::Epub, Self::Djvu, Self::Fb2, Self::Other];
 }
 
@@ -190,6 +195,13 @@ pub struct Progress {
     pub percent: f32,
     /// Unix seconds.
     pub updated_at: i64,
+}
+
+impl Progress {
+    /// The block index of a text-reader position (`block:N`).
+    pub fn block(&self) -> Option<usize> {
+        self.position.as_deref()?.strip_prefix("block:")?.parse().ok()
+    }
 }
 
 /// Which screen is shown.
