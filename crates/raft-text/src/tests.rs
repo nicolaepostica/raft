@@ -43,7 +43,10 @@ fn reads_fb2_structure() {
     assert!(b.blocks.contains(&Block::Break));
     assert!(!texts.iter().any(|t| t.contains("AAAA")));
     let titles: Vec<&str> = b.chapters.iter().map(|c| c.title.as_str()).collect();
-    assert_eq!(titles, ["Ёжик в тумане", "Глава 1. Начало", "1.1", "Note", "1"]);
+    assert_eq!(
+        titles,
+        ["Ёжик в тумане", "Глава 1. Начало", "1.1", "Note", "1"]
+    );
     // Chapter starts point at their heading.
     for c in &b.chapters {
         assert!(
@@ -222,4 +225,3 @@ fn parses_the_library() {
         failed.join("\n")
     );
 }
-
