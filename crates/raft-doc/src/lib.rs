@@ -200,7 +200,11 @@ pub struct Progress {
 impl Progress {
     /// The block index of a text-reader position (`block:N`).
     pub fn block(&self) -> Option<usize> {
-        self.position.as_deref()?.strip_prefix("block:")?.parse().ok()
+        self.position
+            .as_deref()?
+            .strip_prefix("block:")?
+            .parse()
+            .ok()
     }
 }
 
