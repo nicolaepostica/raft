@@ -12,6 +12,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("raft-catalog", 3),
     ("raft-store", 3),
     ("raft-render", 3),
+    ("raft-text", 3),
     ("raft-engine", 5),
     ("raft-ui", 6),
     ("raft", 7),
@@ -30,6 +31,7 @@ const GUI_CRATES: &[&str] = &[
 
 /// Crates that must keep compiling for `wasm32-unknown-unknown`.
 const WASM_CRATES: &[&str] = &[
+    "raft-text",
     "raft-doc",
     "raft-search",
     "raft-catalog",
