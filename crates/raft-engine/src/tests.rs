@@ -169,19 +169,27 @@ fn text_books_open_in_the_text_reader_and_save_their_position() {
     assert_eq!(s.route(), &Route::Reader { id: "b".into() });
     assert!(s.enabled("reader.next").is_err());
     assert!(s.run("reader.goto", &json!({"page": 3})).is_err());
-    s.run("reader.position", &json!({"block": 50, "total": 101})).unwrap();
-    s.run("reader.position", &json!({"block": 75, "total": 101})).unwrap();
+    s.run("reader.position", &json!({"block": 50, "total": 101}))
+        .unwrap();
+    s.run("reader.position", &json!({"block": 75, "total": 101}))
+        .unwrap();
     let p = s.progress("b").unwrap();
     assert_eq!(p.block(), Some(75));
     assert!((p.percent - 75.0).abs() < 0.01);
     assert!(rec.saved.lock().unwrap().len() >= 2);
-    assert!(s.run("reader.position", &json!({"block": 1, "total": 0})).is_err());
+    assert!(
+        s.run("reader.position", &json!({"block": 1, "total": 0}))
+            .is_err()
+    );
     // Reopening starts at the saved block; page books still refuse positions.
     s.run("view.library", &Value::Null).unwrap();
     let r = s.run("book.read", &json!({"id": "b"})).unwrap();
     assert_eq!(r["block"], 75);
     s.run("book.read", &json!({"id": "a"})).unwrap();
-    assert!(s.run("reader.position", &json!({"block": 1, "total": 5})).is_err());
+    assert!(
+        s.run("reader.position", &json!({"block": 1, "total": 5}))
+            .is_err()
+    );
     // Opening externally stays available.
     s.run("book.open_external", &json!({"id": "b"})).unwrap();
     assert_eq!(rec.opened.lock().unwrap().as_slice(), ["b"]);
