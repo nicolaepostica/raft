@@ -8,8 +8,12 @@ mod covers;
 mod edit;
 mod library;
 mod reader;
+mod text_reader;
+
+use std::sync::Arc;
 
 use raft_doc::{Book, Route};
+use raft_text::TextBook;
 use raft_engine::{EngineError, Session, Shortcut, registry};
 use serde_json::{Value, json};
 
@@ -22,6 +26,8 @@ pub trait Files {
     /// Asks for a rendered page image; returns it once ready (non-blocking).
     /// `Some(Err)` when rendering failed.
     fn page(&self, book: &Book, page: u32, width_px: u32) -> Option<Result<Vec<u8>, String>>;
+    /// Asks for an EPUB/FB2 book parsed as text; returns it once ready (non-blocking).
+    fn text(&self, book: &Book) -> Option<Result<Arc<TextBook>, String>>;
 }
 
 /// Files host that has nothing (tests, web).
@@ -35,6 +41,9 @@ impl Files for NoFiles {
     fn page(&self, _: &Book, _: u32, _: u32) -> Option<Result<Vec<u8>, String>> {
         Some(Err("page rendering is not available".into()))
     }
+    fn text(&self, _: &Book) -> Option<Result<Arc<TextBook>, String>> {
+        Some(Err("reading files is not available".into()))
+    }
 }
 
 /// The whole interface state.
@@ -43,6 +52,8 @@ pub struct RaftUi {
     files: Box<dyn Files>,
     covers: covers::Covers,
     reader: reader::ReaderView,
+    text: Option<text_reader::TextView>,
+    text_prefs: text_reader::TextPrefs,
     /// Open metadata correction form, if any.
     edit: Option<edit::Draft>,
     search: String,
@@ -57,6 +68,8 @@ impl RaftUi {
             files,
             covers: covers::Covers::default(),
             reader: reader::ReaderView::default(),
+            text: None,
+            text_prefs: text_reader::TextPrefs::default(),
             edit: None,
             search,
             focus_search: false,
@@ -90,7 +103,14 @@ impl RaftUi {
                 egui::CentralPanel::default().show(ui, |ui| book::book_page(self, ui, &id));
             }
             Route::Reader { id } => {
-                egui::CentralPanel::default().show(ui, |ui| reader::reader(self, ui, &id));
+                let text = self.session.book(&id).is_some_and(|b| b.format.is_text());
+                egui::CentralPanel::default().show(ui, |ui| {
+                    if text {
+                        text_reader::reader(self, ui, &id);
+                    } else {
+                        reader::reader(self, ui, &id);
+                    }
+                });
             }
         }
     }
