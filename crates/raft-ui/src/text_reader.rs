@@ -240,7 +240,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             i += 1;
         }
     });
-    view.offset = output.state.offset.y;
+    view.offset = output.state.offset().y;
     view.view_height = output.inner_rect.height();
     view.top = block_at(view, view.offset + 1.0);
 
