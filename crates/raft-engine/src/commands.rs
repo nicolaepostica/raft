@@ -428,7 +428,12 @@ fn book_read(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         Ok(json!({ "reader": "paged", "page": page }))
     } else if book.format.is_text() {
         s.state.route = Route::Reader { id: id.clone() };
-        let block = s.state.progress.get(&id).and_then(Progress::block).unwrap_or(0);
+        let block = s
+            .state
+            .progress
+            .get(&id)
+            .and_then(Progress::block)
+            .unwrap_or(0);
         Ok(json!({ "reader": "text", "block": block }))
     } else {
         s.backend
@@ -699,9 +704,18 @@ fn reader_position(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         return Err(bad("`total` is out of range"));
     }
     let block = block.clamp(0, total - 1);
-    let percent = if total > 1 { block as f64 / (total - 1) as f64 * 100.0 } else { 100.0 };
+    let percent = if total > 1 {
+        block as f64 / (total - 1) as f64 * 100.0
+    } else {
+        100.0
+    };
     let position = format!("block:{block}");
-    if s.state.progress.get(&id).and_then(|p| p.position.as_deref()) == Some(position.as_str()) {
+    if s.state
+        .progress
+        .get(&id)
+        .and_then(|p| p.position.as_deref())
+        == Some(position.as_str())
+    {
         return Ok(json!({ "block": block }));
     }
     let now = s.backend.now();
