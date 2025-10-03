@@ -70,7 +70,11 @@ impl TextView {
 
     /// Index of the chapter containing `block`.
     fn chapter_of(&self, block: usize) -> usize {
-        self.book.chapters.iter().rposition(|c| c.start <= block).unwrap_or(0)
+        self.book
+            .chapters
+            .iter()
+            .rposition(|c| c.start <= block)
+            .unwrap_or(0)
     }
 }
 
@@ -83,9 +87,19 @@ fn style(ui: &egui::Ui, block: &Block, size: f32) -> (egui::FontId, egui::Color3
             v.strong_text_color(),
             0.0,
         ),
-        Block::Paragraph { kind: Kind::Pre, .. } => (egui::FontId::monospace(size * 0.8), v.text_color(), 16.0),
-        Block::Paragraph { kind: Kind::Quote, .. } => (egui::FontId::proportional(size * 0.95), v.weak_text_color(), 36.0),
-        Block::Paragraph { kind: Kind::Verse, .. } => (egui::FontId::proportional(size), v.text_color(), 56.0),
+        Block::Paragraph {
+            kind: Kind::Pre, ..
+        } => (egui::FontId::monospace(size * 0.8), v.text_color(), 16.0),
+        Block::Paragraph {
+            kind: Kind::Quote, ..
+        } => (
+            egui::FontId::proportional(size * 0.95),
+            v.weak_text_color(),
+            36.0,
+        ),
+        Block::Paragraph {
+            kind: Kind::Verse, ..
+        } => (egui::FontId::proportional(size), v.text_color(), 56.0),
         Block::Paragraph { .. } => (egui::FontId::proportional(size), v.text_color(), 0.0),
         Block::Break => (egui::FontId::proportional(size), v.weak_text_color(), 0.0),
     }
@@ -102,7 +116,9 @@ fn block_text(block: &Block) -> &str {
 fn gap(block: &Block, size: f32) -> f32 {
     match block {
         Block::Heading { .. } => size * 0.9,
-        Block::Paragraph { kind: Kind::Verse, .. } => size * 0.15,
+        Block::Paragraph {
+            kind: Kind::Verse, ..
+        } => size * 0.15,
         _ => size * 0.55,
     }
 }
@@ -113,7 +129,12 @@ fn measure(view: &mut TextView, ui: &egui::Ui, width: f32, size: f32) {
     let mut y = 0.0;
     for block in &view.book.blocks {
         let (font, color, indent) = style(ui, block, size);
-        let galley = ui.painter().layout(block_text(block).to_owned(), font, color, (width - indent).max(50.0));
+        let galley = ui.painter().layout(
+            block_text(block).to_owned(),
+            font,
+            color,
+            (width - indent).max(50.0),
+        );
         let h = galley.size().y + gap(block, size);
         view.tops.push(y);
         view.heights.push(h);
@@ -144,7 +165,8 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     ui.spinner();
                     ui.label("Se pregătește cartea…");
                 });
-                ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(50));
                 return;
             }
             Some(Err(e)) => {
@@ -171,7 +193,9 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
 
     let size = app.text_prefs.font_size;
     let width = (ui.available_width() - 24.0).clamp(200.0, COLUMN);
-    let Some(view) = app.text.as_mut() else { return };
+    let Some(view) = app.text.as_mut() else {
+        return;
+    };
     if view.measured != (width, size) {
         // Keep the reading place when the layout changes.
         let keep = view.top;
@@ -200,13 +224,19 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 break;
             }
             let (font, color, indent) = style(ui, block, size);
-            let galley = ui.painter().layout(block_text(block).to_owned(), font, color, (width - indent).max(50.0));
+            let galley = ui.painter().layout(
+                block_text(block).to_owned(),
+                font,
+                color,
+                (width - indent).max(50.0),
+            );
             let x = if matches!(block, Block::Break) {
                 left + (width - galley.size().x) / 2.0
             } else {
                 left + indent
             };
-            ui.painter().galley(egui::pos2(x, origin_y + top), galley, color);
+            ui.painter()
+                .galley(egui::pos2(x, origin_y + top), galley, color);
             i += 1;
         }
     });
@@ -223,7 +253,8 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         let block = view.top;
         app.act("reader.position", json!({ "block": block, "total": total }));
     } else if view.reported != Some(view.top) {
-        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(REPORT_EVERY));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(REPORT_EVERY));
     }
 }
 
@@ -235,10 +266,24 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
         ui.separator();
         if let Some(view) = app.text.as_ref().filter(|v| v.book_id == id) {
             let current = view.chapter_of(view.top);
-            let name = |i: usize, t: &str| if t.is_empty() { format!("Capitolul {}", i + 1) } else { t.to_owned() };
-            let chapters: Vec<(usize, String)> =
-                view.book.chapters.iter().enumerate().map(|(i, c)| (c.start, name(i, &c.title))).collect();
-            let selected = chapters.get(current).map(|c| c.1.clone()).unwrap_or_default();
+            let name = |i: usize, t: &str| {
+                if t.is_empty() {
+                    format!("Capitolul {}", i + 1)
+                } else {
+                    t.to_owned()
+                }
+            };
+            let chapters: Vec<(usize, String)> = view
+                .book
+                .chapters
+                .iter()
+                .enumerate()
+                .map(|(i, c)| (c.start, name(i, &c.title)))
+                .collect();
+            let selected = chapters
+                .get(current)
+                .map(|c| c.1.clone())
+                .unwrap_or_default();
             let mut goto = None;
             egui::ComboBox::from_label("Cuprins")
                 .selected_text(egui::RichText::new(selected))
@@ -284,10 +329,15 @@ fn keys(app: &mut RaftUi, ui: &egui::Ui) {
     if ui.ctx().egui_wants_keyboard_input() {
         return;
     }
-    let Some(view) = app.text.as_mut() else { return };
+    let Some(view) = app.text.as_mut() else {
+        return;
+    };
     let page = (view.view_height * 0.9).max(40.0);
     let step = ui.input(|i| {
-        if i.key_pressed(egui::Key::PageDown) || i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::ArrowRight) {
+        if i.key_pressed(egui::Key::PageDown)
+            || i.key_pressed(egui::Key::Space)
+            || i.key_pressed(egui::Key::ArrowRight)
+        {
             Some(page)
         } else if i.key_pressed(egui::Key::PageUp) || i.key_pressed(egui::Key::ArrowLeft) {
             Some(-page)
