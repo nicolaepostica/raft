@@ -8,6 +8,7 @@ use raft_doc::edits::{Field, Override};
 use raft_doc::{Book, BookId, Catalog, Progress};
 use raft_engine::Backend;
 use raft_store::{CatalogDb, UserDb};
+use raft_text::TextBook;
 use raft_ui::Files;
 
 /// Largest cover file read, in bytes.
@@ -117,9 +118,21 @@ struct Pages {
     running: Vec<PageKey>,
 }
 
+/// Most parsed text books kept in memory.
+const TEXT_CACHE: usize = 3;
+
+type TextResult = Result<Arc<TextBook>, String>;
+
+#[derive(Default)]
+struct Texts {
+    done: Vec<(BookId, TextResult)>,
+    running: Vec<BookId>,
+}
+
 pub struct NativeFiles {
     library: PathBuf,
     pages: Arc<Mutex<Pages>>,
+    texts: Arc<Mutex<Texts>>,
 }
 
 impl NativeFiles {
@@ -127,6 +140,7 @@ impl NativeFiles {
         Self {
             library: library.to_owned(),
             pages: Arc::default(),
+            texts: Arc::default(),
         }
     }
 
@@ -136,6 +150,41 @@ impl NativeFiles {
 }
 
 impl Files for NativeFiles {
+    fn text(&self, book: &Book) -> Option<TextResult> {
+        let mut texts = self.texts.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, r)) = texts.done.iter().find(|(id, _)| *id == book.id) {
+            return Some(r.clone());
+        }
+        if texts.running.contains(&book.id) {
+            return None;
+        }
+        let Some(path) = resolve(&self.library, &book.path) else {
+            return Some(Err("the book's path is not valid".into()));
+        };
+        texts.running.push(book.id.clone());
+        drop(texts);
+        let (id, format, shared) = (book.id.clone(), book.format, Arc::clone(&self.texts));
+        let own_id = id.clone();
+        let spawned = std::thread::Builder::new()
+            .name("raft-text".into())
+            .spawn(move || {
+                let result = read_capped(&path, raft_text::MAX_INPUT)
+                    .and_then(|bytes| raft_text::parse(&bytes, format).map_err(|e| e.to_string()))
+                    .map(Arc::new);
+                let mut texts = shared.lock().unwrap_or_else(|e| e.into_inner());
+                texts.running.retain(|k| *k != id);
+                texts.done.push((id, result));
+                if texts.done.len() > TEXT_CACHE {
+                    drop(texts.done.remove(0));
+                }
+            });
+        if let Err(e) = spawned {
+            self.texts.lock().unwrap_or_else(|e| e.into_inner()).running.retain(|k| *k != own_id);
+            return Some(Err(format!("could not start reading: {e}")));
+        }
+        None
+    }
+
     fn cover(&self, book: &Book) -> Option<Vec<u8>> {
         let path = resolve(&self.library, book.cover.as_deref()?)?;
         let meta = std::fs::metadata(&path).ok()?;
@@ -181,6 +230,15 @@ impl Files for NativeFiles {
         }
         None
     }
+}
+
+/// Reads a whole file, refusing ones larger than `max` bytes.
+fn read_capped(path: &Path, max: usize) -> Result<Vec<u8>, String> {
+    let len = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
+    if len > max as u64 {
+        return Err(format!("the file is too large ({len} bytes)"));
+    }
+    std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 #[cfg(test)]
