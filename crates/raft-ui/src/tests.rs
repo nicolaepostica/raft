@@ -159,3 +159,44 @@ fn draft_changes_only_contain_edited_fields() {
     assert_eq!(c["year"], "2020");
     assert_eq!(c["categories"], serde_json::json!(["python", "devops"]));
 }
+
+const SMALL_FB2: &str = r#"<FictionBook><body>
+<section><title><p>Том первый</p></title><p>Ну, князь. Генуя и Лукка — поместья фамилии Бонапарте.</p></section>
+<section><title><p>Том второй</p></title><p>В начале 1806 года Николай Ростов вернулся в отпуск.</p></section>
+</body></FictionBook>"#;
+
+struct TextFiles;
+
+impl crate::Files for TextFiles {
+    fn cover(&self, _: &Book) -> Option<Vec<u8>> {
+        None
+    }
+    fn page(&self, _: &Book, _: u32, _: u32) -> Option<Result<Vec<u8>, String>> {
+        None
+    }
+    fn text(&self, book: &Book) -> Option<Result<std::sync::Arc<raft_text::TextBook>, String>> {
+        Some(
+            raft_text::parse(SMALL_FB2.as_bytes(), book.format)
+                .map(std::sync::Arc::new)
+                .map_err(|e| e.to_string()),
+        )
+    }
+}
+
+#[test]
+fn text_reader_shows_the_book_and_jumps_by_chapter() {
+    let mut ui = app();
+    ui.files = Box::new(TextFiles);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.state_mut().run("book.read", serde_json::json!({"id": "b"})).unwrap();
+    h.run();
+    h.get_by_label("Cuprins").click();
+    h.run();
+    h.get_by_label("Том второй").click();
+    h.run();
+    let p = h.state().session.progress("b").cloned().unwrap();
+    assert_eq!(p.block(), Some(2));
+    assert_eq!(h.state().session.route(), &Route::Reader { id: "b".into() });
+}
