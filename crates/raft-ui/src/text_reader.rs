@@ -37,6 +37,9 @@ pub struct TextView {
     reported: Option<usize>,
     last_report: f64,
     top: usize,
+    /// Target of the last jump: the reading place until the user scrolls away
+    /// (the scroll cannot always bring it to the top, e.g. near the end).
+    pinned: Option<(usize, Option<f32>)>,
 }
 
 /// Reader preferences (not part of the document).
@@ -65,6 +68,7 @@ impl TextView {
             reported: start,
             last_report: 0.0,
             top: start.unwrap_or(0),
+            pinned: start.map(|b| (b, None)),
         }
     }
 
@@ -202,6 +206,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         measure(view, ui, width, size);
         if keep > 0 {
             view.jump = Some(Jump::Block(keep));
+            view.pinned = Some((keep, None));
         }
     }
     let mut area = egui::ScrollArea::vertical()
@@ -242,7 +247,12 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     });
     view.offset = output.state.clamped_offset().y;
     view.view_height = output.inner_rect.height();
-    view.top = block_at(view, view.offset + 1.0);
+    view.pinned = match view.pinned {
+        Some((b, None)) => Some((b, Some(view.offset))),
+        Some((b, Some(at))) if (at - view.offset).abs() < 1.0 => Some((b, Some(at))),
+        _ => None,
+    };
+    view.top = view.pinned.map_or_else(|| block_at(view, view.offset + 1.0), |(b, _)| b);
 
     // Report the reading position (throttled; also right after a jump settles).
     let now = ui.input(|i| i.time);
@@ -308,6 +318,7 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
                     v.jump = Some(Jump::Block(start));
                     v.top = start;
                     v.reported = Some(start);
+                    v.pinned = Some((start, None));
                 }
                 app.act("reader.position", json!({ "block": start, "total": total }));
             }
