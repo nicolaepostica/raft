@@ -163,7 +163,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     if app.text.as_ref().is_none_or(|v| v.book_id != id) {
         match app.files.text(&book) {
             None => {
-                top_bar(app, ui, &book.display_title().to_owned(), id);
+                top_bar(app, ui, book.display_title(), id);
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.spinner();
@@ -174,7 +174,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 return;
             }
             Some(Err(e)) => {
-                top_bar(app, ui, &book.display_title().to_owned(), id);
+                top_bar(app, ui, book.display_title(), id);
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.label(format!("Cartea nu a putut fi citită: {e}"));
