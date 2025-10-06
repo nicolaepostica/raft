@@ -252,7 +252,9 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         Some((b, Some(at))) if (at - view.offset).abs() < 1.0 => Some((b, Some(at))),
         _ => None,
     };
-    view.top = view.pinned.map_or_else(|| block_at(view, view.offset + 1.0), |(b, _)| b);
+    view.top = view
+        .pinned
+        .map_or_else(|| block_at(view, view.offset + 1.0), |(b, _)| b);
 
     // Report the reading position (throttled; also right after a jump settles).
     let now = ui.input(|i| i.time);
