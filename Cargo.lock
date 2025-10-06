@@ -2860,6 +2860,7 @@ dependencies = [
  "raft-engine",
  "raft-render",
  "raft-store",
+ "raft-text",
  "raft-ui",
  "serde_json",
 ]
@@ -2945,6 +2946,7 @@ dependencies = [
  "proptest",
  "raft-doc",
  "raft-engine",
+ "raft-text",
  "serde_json",
 ]
 
