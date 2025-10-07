@@ -13,6 +13,7 @@ raft-engine.workspace = true
 raft-store.workspace = true
 raft-ui.workspace = true
 raft-render.workspace = true
+raft-text.workspace = true
 eframe.workspace = true
 egui.workspace = true
 anyhow.workspace = true
