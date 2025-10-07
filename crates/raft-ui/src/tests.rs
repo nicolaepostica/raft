@@ -190,7 +190,9 @@ fn text_reader_shows_the_book_and_jumps_by_chapter() {
     let mut h = Harness::builder()
         .with_size(egui::vec2(1100.0, 750.0))
         .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
-    h.state_mut().run("book.read", serde_json::json!({"id": "b"})).unwrap();
+    h.state_mut()
+        .run("book.read", serde_json::json!({"id": "b"}))
+        .unwrap();
     h.run();
     h.get_by_label("Cuprins").click();
     h.run();
