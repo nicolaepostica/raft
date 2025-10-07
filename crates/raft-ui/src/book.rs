@@ -108,7 +108,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         let text = match (p.page, p.block()) {
-                            (Some(page), _) => format!("Ai ajuns la pagina {page} ({:.0}%)", p.percent),
+                            (Some(page), _) => {
+                                format!("Ai ajuns la pagina {page} ({:.0}%)", p.percent)
+                            }
                             (None, Some(_)) => format!("Ai citit {:.0}% din carte", p.percent),
                             (None, None) => "Deschisă în aplicația externă".to_owned(),
                         };
