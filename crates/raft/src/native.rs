@@ -179,7 +179,11 @@ impl Files for NativeFiles {
                 }
             });
         if let Err(e) = spawned {
-            self.texts.lock().unwrap_or_else(|e| e.into_inner()).running.retain(|k| *k != own_id);
+            self.texts
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .running
+                .retain(|k| *k != own_id);
             return Some(Err(format!("could not start reading: {e}")));
         }
         None
@@ -234,7 +238,9 @@ impl Files for NativeFiles {
 
 /// Reads a whole file, refusing ones larger than `max` bytes.
 fn read_capped(path: &Path, max: usize) -> Result<Vec<u8>, String> {
-    let len = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
+    let len = std::fs::metadata(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .len();
     if len > max as u64 {
         return Err(format!("the file is too large ({len} bytes)"));
     }
