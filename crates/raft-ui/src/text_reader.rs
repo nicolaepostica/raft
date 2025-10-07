@@ -190,6 +190,16 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             }
         }
     }
+    // Follow position changes made elsewhere (undo, the control channel).
+    let saved = app.session.progress(id).and_then(raft_doc::Progress::block);
+    if let (Some(view), Some(block)) = (app.text.as_mut(), saved)
+        && view.reported != Some(block)
+    {
+        view.jump = Some(Jump::Block(block));
+        view.top = block;
+        view.reported = Some(block);
+        view.pinned = Some((block, None));
+    }
     let title = book.display_title().to_owned();
     top_bar(app, ui, &title, id);
     ui.separator();
