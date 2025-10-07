@@ -13,8 +13,8 @@ mod text_reader;
 use std::sync::Arc;
 
 use raft_doc::{Book, Route};
-use raft_text::TextBook;
 use raft_engine::{EngineError, Session, Shortcut, registry};
+use raft_text::TextBook;
 use serde_json::{Value, json};
 
 pub use covers::decode_image;
