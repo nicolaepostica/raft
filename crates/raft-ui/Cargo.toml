@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 raft-doc.workspace = true
 raft-engine.workspace = true
+raft-text.workspace = true
 egui.workspace = true
 image.workspace = true
 serde_json.workspace = true
