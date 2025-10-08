@@ -24,6 +24,7 @@ pub struct Draft {
     pub tags: String,
     pub description: String,
     pub categories: BTreeSet<String>,
+    pub reviewed: bool,
 }
 
 impl Draft {
@@ -39,6 +40,7 @@ impl Draft {
             tags: b.tags.join(", "),
             description: b.description.clone(),
             categories: b.categories.iter().cloned().collect(),
+            reviewed: b.reviewed,
         }
     }
 
@@ -59,6 +61,9 @@ impl Draft {
         text(Field::Isbn, &self.isbn, &current.isbn);
         text(Field::Tags, &self.tags, &current.tags);
         text(Field::Description, &self.description, &current.description);
+        if self.reviewed != current.reviewed {
+            out.insert(Field::Reviewed.slug().to_owned(), json!(self.reviewed));
+        }
         if self.categories != current.categories {
             // Keep the book's order for categories it already had (the first is the main one).
             let mut list: Vec<&String> = book
@@ -77,7 +82,7 @@ impl Draft {
     }
 }
 
-fn label(field: Field) -> &'static str {
+pub fn label(field: Field) -> &'static str {
     match field {
         Field::Title => "Titlu",
         Field::Authors => "Autori",
@@ -88,6 +93,7 @@ fn label(field: Field) -> &'static str {
         Field::Categories => "Categorii",
         Field::Tags => "Etichete",
         Field::Description => "Descriere",
+        Field::Reviewed => "Verificată",
     }
 }
 
@@ -96,6 +102,14 @@ fn field_label(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book, field: Field) -
     let edited = app.session.edited_fields(&book.id).contains(&field);
     ui.horizontal(|ui| {
         let resp = ui.label(label(field));
+        if book.lacks(field) {
+            let text = egui::RichText::new("lipsește").small();
+            if Field::REQUIRED.contains(&field) {
+                ui.label(text.color(ui.visuals().error_fg_color));
+            } else {
+                ui.label(text.weak());
+            }
+        }
         if edited {
             let original = app
                 .session
@@ -125,6 +139,16 @@ fn field_label(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book, field: Field) -
         resp
     })
     .inner
+}
+
+/// The result after `id` in the library's current results, with `id`'s 1-based
+/// position and the result count. Computed before saving, so the next book is
+/// found even when the save takes the current one out of the results.
+fn next_result(app: &RaftUi, id: &str) -> Option<(String, usize, usize)> {
+    let mut results = app.session.results();
+    let pos = results.position(|b| b.id == id)?;
+    let next = results.next()?.id.clone();
+    Some((next, pos + 1, app.session.result_count()))
 }
 
 /// Draws the form for the book of the `Edit` route.
@@ -192,7 +216,13 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
             }
         });
     ui.add_space(8.0);
+    ui.checkbox(
+        &mut draft.reviewed,
+        "Verificată: ce lipsește nu se poate afla (nu mai apare la „date incomplete”)",
+    );
+    ui.add_space(8.0);
     let changes = draft.changes(book);
+    let next = next_result(app, &book.id);
     let mut close = false;
     ui.horizontal(|ui| {
         if ui
@@ -205,6 +235,30 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
                 .is_ok()
             {
                 close = true;
+            }
+        }
+        if let Some((next, pos, total)) = &next {
+            let text = if changes.is_empty() {
+                "Următoarea"
+            } else {
+                "Salvează și următoarea"
+            };
+            if ui
+                .button(text)
+                .on_hover_text(format!(
+                    "Cartea {pos} din {total} din rezultatele bibliotecii (Ctrl+Enter)"
+                ))
+                .clicked()
+                || ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter))
+            {
+                let saved = changes.is_empty()
+                    || app
+                        .run("book.edit", json!({ "id": book.id, "fields": changes }))
+                        .is_ok();
+                if saved {
+                    app.act("view.edit", json!({ "id": next }));
+                    close = true;
+                }
             }
         }
         if ui.button("Renunță").clicked() {
