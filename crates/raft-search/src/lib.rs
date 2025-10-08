@@ -7,7 +7,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use raft_doc::{Book, Catalog, Filters, Format, Query, Sort};
+use raft_doc::edits::Field;
+use raft_doc::{Book, Catalog, Filters, Format, Mark, Query, Sort};
 use unicode_normalization::UnicodeNormalization;
 
 /// Longest query text considered, in chars.
@@ -103,9 +104,19 @@ enum Skip {
     Category,
     Language,
     Format,
+    /// Marks and missing fields.
+    Marks,
 }
 
 fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
+    if skip != Skip::Marks {
+        if !f.marks.iter().all(|m| book.has(*m)) {
+            return false;
+        }
+        if !f.missing.is_empty() && !f.missing.iter().any(|field| book.lacks(*field)) {
+            return false;
+        }
+    }
     if skip != Skip::Category && !f.categories.is_empty() {
         let ok = if f.primary_category_only {
             book.primary_category()
@@ -217,6 +228,10 @@ pub struct Facets {
     pub formats: Vec<(Format, usize)>,
     /// Year range among the matching books (ignoring the year filter itself).
     pub years: Option<(i32, i32)>,
+    /// Books with each mark (ignoring the mark and missing-field filters).
+    pub marks: Vec<(Mark, usize)>,
+    /// Books lacking each field, in form order (same filters as `marks`).
+    pub missing: Vec<(Field, usize)>,
 }
 
 /// Facet counts for `query`: each facet is counted with every other filter applied.
@@ -227,6 +242,8 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
     let mut langs: BTreeMap<String, usize> = BTreeMap::new();
     let mut formats: BTreeMap<Format, usize> = BTreeMap::new();
     let mut years: Option<(i32, i32)> = None;
+    let mut marks: BTreeMap<Mark, usize> = BTreeMap::new();
+    let mut missing: BTreeMap<Field, usize> = BTreeMap::new();
     let no_years = Filters {
         year_min: None,
         year_max: None,
@@ -253,6 +270,14 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         if passes(b, f, Skip::Format) {
             *formats.entry(b.format).or_default() += 1;
         }
+        if passes(b, f, Skip::Marks) {
+            for m in Mark::ALL.into_iter().filter(|m| b.has(*m)) {
+                *marks.entry(m).or_default() += 1;
+            }
+            for field in b.missing() {
+                *missing.entry(field).or_default() += 1;
+            }
+        }
         if let Some(y) = b.year
             && passes(b, &no_years, Skip::None)
         {
@@ -271,6 +296,8 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         languages: by_count(langs),
         formats,
         years,
+        marks: marks.into_iter().collect(),
+        missing: missing.into_iter().collect(),
     }
 }
 
