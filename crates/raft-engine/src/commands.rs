@@ -724,10 +724,10 @@ fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
             }
         }
         None => {
-            fields.retain(|f, _| *f == Field::Reviewed);
-            if fields.is_empty() {
+            if fields.keys().all(|f| *f == Field::Reviewed) {
                 return Err(EngineError::NotFound(format!("no corrections for `{id}`")));
             }
+            fields.retain(|f, _| *f == Field::Reviewed);
         }
     }
     if fields.is_empty() {
