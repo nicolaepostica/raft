@@ -1,6 +1,7 @@
 //! Library screen: filters panel, search bar, "continue reading" and the book grid.
 
-use raft_doc::{Book, Format, Sort};
+use raft_doc::edits::Field;
+use raft_doc::{Book, Format, Mark, Sort};
 use serde_json::json;
 
 use crate::{RaftUi, language_name};
@@ -44,6 +45,9 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         {
             app.act("filter.clear", json!({}));
         }
+        ui.add_space(6.0);
+
+        marks(app, ui, &facets, &filters);
         ui.add_space(6.0);
 
         ui.strong("Limbă");
@@ -112,6 +116,78 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
             }
         }
     });
+}
+
+fn mark_label(m: Mark) -> &'static str {
+    match m {
+        Mark::Edited => "Corectate manual",
+        Mark::Incomplete => "Date incomplete",
+        Mark::Reviewed => "Verificate",
+    }
+}
+
+/// The "Date" section: marks, and the fields that are missing.
+fn marks(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    facets: &raft_search::Facets,
+    filters: &raft_doc::Filters,
+) {
+    ui.strong("Date");
+    let count = |m: Mark| {
+        facets
+            .marks
+            .iter()
+            .find(|(k, _)| *k == m)
+            .map_or(0, |(_, n)| *n)
+    };
+    for m in Mark::ALL {
+        let mut on = filters.marks.contains(&m);
+        let hint = match m {
+            Mark::Edited => "Cărți în care ai corectat cel puțin un câmp",
+            Mark::Incomplete => {
+                "Fără titlu, autori, an, limbă, categorii sau descriere și nemarcate ca verificate"
+            }
+            Mark::Reviewed => "Marcate de tine ca verificate",
+        };
+        if ui
+            .checkbox(&mut on, format!("{}  ({})", mark_label(m), count(m)))
+            .on_hover_text(hint)
+            .changed()
+        {
+            app.act("filter.mark.toggle", json!({ "mark": m.slug() }));
+        }
+    }
+    let open = !filters.missing.is_empty();
+    egui::CollapsingHeader::new("Lipsește câmpul…")
+        .default_open(open)
+        .show(ui, |ui| {
+            for (field, n) in &facets.missing {
+                let mut on = filters.missing.contains(field);
+                let name = crate::edit::label(*field);
+                let name = if Field::REQUIRED.contains(field) {
+                    egui::RichText::new(format!("{name}  ({n})"))
+                } else {
+                    egui::RichText::new(format!("{name}  ({n})")).weak()
+                };
+                if ui.checkbox(&mut on, name).changed() {
+                    app.act("filter.missing.toggle", json!({ "field": field.slug() }));
+                }
+            }
+        });
+}
+
+/// A small label in a filled rounded box, its top-left corner at `pos`; returns its height.
+fn badge(painter: &egui::Painter, pos: egui::Pos2, text: &str, fill: egui::Color32) -> f32 {
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        egui::FontId::proportional(11.0),
+        egui::Color32::WHITE,
+    );
+    let rect = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(8.0, 2.0));
+    painter.rect_filled(rect, 4.0, fill);
+    painter.galley(rect.min + egui::vec2(4.0, 1.0), galley, egui::Color32::WHITE);
+    rect.height()
 }
 
 pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
@@ -228,6 +304,14 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
                 visuals.weak_text_color(),
             );
         }
+    }
+    let mut y = cover_rect.top() + 4.0;
+    let at = |y: f32| egui::pos2(cover_rect.left() + 4.0, y);
+    if book.edited {
+        y += 2.0 + badge(&painter, at(y), "corectată", egui::Color32::from_rgb(40, 110, 200));
+    }
+    if book.is_incomplete() {
+        badge(&painter, at(y), "incompletă", egui::Color32::from_rgb(190, 90, 20));
     }
     if let Some(p) = app.session.progress(&book.id) {
         let bar = egui::Rect::from_min_size(
