@@ -1,7 +1,7 @@
 //! The command registry: every user-visible action, with its menu, shortcut and params.
 
 use raft_doc::edits::{self, Field};
-use raft_doc::{Format, Progress, Route, Sort};
+use raft_doc::{Format, Mark, Progress, Route, Sort};
 use serde_json::{Value, json};
 
 use crate::params::{opt_bool, opt_i64, opt_str, str};
@@ -197,6 +197,18 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("filter.format.toggle", "Filtru: format", toggle_format)
     },
     CommandSpec {
+        params: r#"{"mark": "edited"|"incomplete"|"reviewed"}"#,
+        ..spec("filter.mark.toggle", "Filtru: marcaj", toggle_mark)
+    },
+    CommandSpec {
+        params: r#"{"field": "title"|"authors"|"year"|"language"|"publisher"|"isbn"|"categories"|"tags"|"description"}"#,
+        ..spec(
+            "filter.missing.toggle",
+            "Filtru: câmp lipsă",
+            toggle_missing,
+        )
+    },
+    CommandSpec {
         params: r#"{"min": int|null, "max": int|null}"#,
         coalesce: true,
         ..spec("filter.years", "Filtru: ani", filter_years)
@@ -274,7 +286,11 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("book.edit", "Corectează metadatele", book_edit)
     },
     CommandSpec {
-        params: r#"{"id": string?, "field": string?} (no field: every correction of the book)"#,
+        params: r#"{"id": string?, "on": bool?} (default: toggle) — missing fields are known to be unknowable"#,
+        ..spec("book.review", "Marchează ca verificată", book_review)
+    },
+    CommandSpec {
+        params: r#"{"id": string?, "field": string?} (no field: every correction of the book, the reviewed mark stays)"#,
         ..spec(
             "book.edit.reset",
             "Revino la datele din catalog",
@@ -350,6 +366,23 @@ fn toggle_format(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         .find(|f| f.slug() == slug)
         .ok_or_else(|| EngineError::BadParams(format!("unknown format `{slug}`")))?;
     toggle(&mut s.state.query.filters.formats, format);
+    Ok(Value::Null)
+}
+
+fn toggle_mark(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let slug = str(p, "mark")?;
+    let mark =
+        Mark::from_slug(slug).ok_or_else(|| EngineError::BadParams(format!("unknown mark `{slug}`")))?;
+    toggle(&mut s.state.query.filters.marks, mark);
+    Ok(Value::Null)
+}
+
+fn toggle_missing(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let slug = str(p, "field")?;
+    let field = Field::from_slug(slug)
+        .filter(|f| *f != Field::Reviewed)
+        .ok_or_else(|| EngineError::BadParams(format!("unknown field `{slug}`")))?;
+    toggle(&mut s.state.query.filters.missing, field);
     Ok(Value::Null)
 }
 
@@ -570,6 +603,11 @@ fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError
     let json_list =
         |items: Vec<String>| serde_json::to_string(&items).map_err(|e| bad(e.to_string()));
     match field {
+        Field::Reviewed => match v {
+            Value::Bool(true) => Ok("1".to_owned()),
+            Value::Bool(false) | Value::Null => Ok(String::new()),
+            _ => Err(bad("`reviewed` must be a boolean")),
+        },
         Field::Title => {
             let t = text(MAX_SHORT)?;
             if t.is_empty() {
@@ -685,12 +723,33 @@ fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
                 )));
             }
         }
-        None => fields.clear(),
+        None => {
+            fields.retain(|f, _| *f == Field::Reviewed);
+            if fields.is_empty() {
+                return Err(EngineError::NotFound(format!("no corrections for `{id}`")));
+            }
+        }
     }
     if fields.is_empty() {
         s.state.overrides.remove(&id);
     }
     Ok(Value::Null)
+}
+
+fn book_review(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    let current = s.book(&id).is_some_and(|b| b.reviewed);
+    let on = opt_bool(p, "on")?.unwrap_or(!current);
+    let fields = s.state.overrides.entry(id.clone()).or_default();
+    if on {
+        fields.insert(Field::Reviewed, "1".to_owned());
+    } else {
+        fields.remove(&Field::Reviewed);
+    }
+    if fields.is_empty() {
+        s.state.overrides.remove(&id);
+    }
+    Ok(json!({ "reviewed": on }))
 }
 
 /// Most blocks a text book may report.
