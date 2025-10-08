@@ -245,11 +245,8 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
             };
             if ui
                 .button(text)
-                .on_hover_text(format!(
-                    "Cartea {pos} din {total} din rezultatele bibliotecii (Ctrl+Enter)"
-                ))
+                .on_hover_text(format!("Cartea {pos} din {total} din rezultatele bibliotecii"))
                 .clicked()
-                || ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter))
             {
                 let saved = changes.is_empty()
                     || app
