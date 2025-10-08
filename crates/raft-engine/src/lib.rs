@@ -174,7 +174,12 @@ impl Session {
         self.state
             .overrides
             .get(id)
-            .map(|f| f.keys().copied().collect())
+            .map(|f| {
+                f.keys()
+                    .copied()
+                    .filter(|f| *f != Field::Reviewed)
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -433,7 +438,8 @@ impl Session {
             "results": self.results.len(),
             "first_results": self.results().take(10).map(|b| &b.id).collect::<Vec<_>>(),
             "progress": self.state.progress.len(),
-            "edited_books": self.state.overrides.len(),
+            "edited_books": self.catalog.books.iter().filter(|b| b.edited).count(),
+            "incomplete_books": self.catalog.books.iter().filter(|b| b.is_incomplete()).count(),
             "can_undo": self.can_undo(),
             "can_redo": self.can_redo(),
             "status": self.status,
