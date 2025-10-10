@@ -130,7 +130,7 @@ fn correcting_metadata_from_the_book_page() {
     );
     assert_eq!(s.edited_fields("a"), vec![raft_doc::edits::Field::Title]);
     assert_eq!(s.route(), &Route::Book { id: "a".into() });
-    h.get_by_label("1 câmp(uri) corectate de tine; restul vin din catalog");
+    h.get_by_label("Corectată manual: 1 câmp(uri); restul vin din catalog");
     h.state_mut()
         .run("edit.undo", serde_json::Value::Null)
         .unwrap();
@@ -139,6 +139,44 @@ fn correcting_metadata_from_the_book_page() {
         h.state().session.book("a").map(|b| b.title.as_str()),
         Some("Rust in Action")
     );
+}
+
+#[test]
+fn processing_incomplete_books_one_after_another() {
+    let mut h = harness();
+    h.run();
+    // "Война и мир" lacks authors, year and description.
+    h.get_by_label("Date incomplete  (1)").click();
+    h.run();
+    h.get_by_label("1 din 2 cărți");
+    h.state_mut()
+        .run("filter.clear", serde_json::json!({}))
+        .unwrap();
+    h.state_mut()
+        .run("view.edit", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Titlu").click();
+    h.run();
+    h.get_by_label("Titlu").type_text("!");
+    h.run();
+    h.get_by_label("Salvează și următoarea").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Edit { id: "b".into() });
+    assert!(h.state().session.book("a").is_some_and(|b| b.edited));
+    h.get_by_label("Autori").click();
+    h.run();
+    h.get_by_label("Autori").type_text("Лев Толстой");
+    h.run();
+    h.get_by_label("Verificată: ce lipsește nu se poate afla (nu mai apare la „date incomplete”)")
+        .click();
+    h.run();
+    h.get_by_label("Salvează").click();
+    h.run();
+    let b = h.state().session.book("b").cloned().unwrap();
+    assert_eq!(b.authors, vec!["Лев Толстой"]);
+    assert!(b.reviewed && b.edited && !b.is_incomplete());
+    h.get_by_label("verificată");
 }
 
 #[test]
