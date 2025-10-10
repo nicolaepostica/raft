@@ -33,6 +33,8 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
         added_at: parts.added_at.map(cap),
         path,
         filename,
+        edited: false,
+        reviewed: false,
     })
 }
 
