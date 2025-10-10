@@ -10,7 +10,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use raft_doc::edits::{self, Field, Override};
 use raft_doc::{Book, BookId, Catalog, Progress, Query, Route, State};
-use raft_search::{Facets, Index};
+use raft_search::Index;
 use serde_json::Value;
 
 pub use commands::{CommandSpec, Shortcut, registry};
