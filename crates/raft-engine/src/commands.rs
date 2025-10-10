@@ -371,8 +371,8 @@ fn toggle_format(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 
 fn toggle_mark(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let slug = str(p, "mark")?;
-    let mark =
-        Mark::from_slug(slug).ok_or_else(|| EngineError::BadParams(format!("unknown mark `{slug}`")))?;
+    let mark = Mark::from_slug(slug)
+        .ok_or_else(|| EngineError::BadParams(format!("unknown mark `{slug}`")))?;
     toggle(&mut s.state.query.filters.marks, mark);
     Ok(Value::Null)
 }
