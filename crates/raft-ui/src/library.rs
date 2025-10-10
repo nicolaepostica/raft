@@ -186,7 +186,11 @@ fn badge(painter: &egui::Painter, pos: egui::Pos2, text: &str, fill: egui::Color
     );
     let rect = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(8.0, 2.0));
     painter.rect_filled(rect, 4.0, fill);
-    painter.galley(rect.min + egui::vec2(4.0, 1.0), galley, egui::Color32::WHITE);
+    painter.galley(
+        rect.min + egui::vec2(4.0, 1.0),
+        galley,
+        egui::Color32::WHITE,
+    );
     rect.height()
 }
 
@@ -308,10 +312,21 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     let mut y = cover_rect.top() + 4.0;
     let at = |y: f32| egui::pos2(cover_rect.left() + 4.0, y);
     if book.edited {
-        y += 2.0 + badge(&painter, at(y), "corectată", egui::Color32::from_rgb(40, 110, 200));
+        y += 2.0
+            + badge(
+                &painter,
+                at(y),
+                "corectată",
+                egui::Color32::from_rgb(40, 110, 200),
+            );
     }
     if book.is_incomplete() {
-        badge(&painter, at(y), "incompletă", egui::Color32::from_rgb(190, 90, 20));
+        badge(
+            &painter,
+            at(y),
+            "incompletă",
+            egui::Color32::from_rgb(190, 90, 20),
+        );
     }
     if let Some(p) = app.session.progress(&book.id) {
         let bar = egui::Rect::from_min_size(
