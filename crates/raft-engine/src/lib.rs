@@ -14,6 +14,7 @@ use raft_search::{Facets, Index};
 use serde_json::Value;
 
 pub use commands::{CommandSpec, Shortcut, registry};
+pub use raft_search::Facets;
 
 /// Errors a command can return.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
