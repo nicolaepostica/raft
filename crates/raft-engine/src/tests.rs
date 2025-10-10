@@ -260,6 +260,58 @@ fn editing_metadata_changes_search_persists_and_undoes() {
 }
 
 #[test]
+fn marks_filter_and_reviewing_survives_reset() {
+    let (mut s, rec) = session();
+    // Both books lack authors and a description.
+    s.run("filter.mark.toggle", &json!({"mark": "incomplete"}))
+        .unwrap();
+    assert_eq!(s.result_count(), 2);
+    s.run(
+        "book.edit",
+        &json!({"id": "a", "fields": {"authors": "Tim McNamara", "description": "Rust."}}),
+    )
+    .unwrap();
+    assert_eq!(s.result_count(), 1);
+    assert!(s.book("a").unwrap().edited);
+    s.run("book.review", &json!({"id": "b"})).unwrap();
+    assert_eq!(s.result_count(), 0);
+    assert!(s.book("b").unwrap().reviewed && !s.book("b").unwrap().edited);
+    assert!(s.edited_fields("b").is_empty());
+    assert!(rec.overrides.lock().unwrap().contains(&(
+        "b".into(),
+        Field::Reviewed,
+        Some("1".into())
+    )));
+    // Resetting the corrections keeps the reviewed mark; only corrections are reset.
+    assert!(s.run("book.edit.reset", &json!({"id": "b"})).is_err());
+    s.run("book.edit", &json!({"id": "b", "fields": {"year": 1869}}))
+        .unwrap();
+    s.run("book.edit.reset", &json!({"id": "b"})).unwrap();
+    assert!(s.book("b").unwrap().reviewed);
+    s.run("book.edit", &json!({"id": "b", "fields": {"reviewed": false}}))
+        .unwrap();
+    assert_eq!(s.result_count(), 1);
+    s.run("filter.mark.toggle", &json!({"mark": "incomplete"}))
+        .unwrap();
+    s.run("filter.mark.toggle", &json!({"mark": "edited"}))
+        .unwrap();
+    assert_eq!(s.results().next().map(|b| b.id.as_str()), Some("a"));
+    s.run("filter.clear", &json!({})).unwrap();
+    s.run("filter.missing.toggle", &json!({"field": "year"}))
+        .unwrap();
+    assert_eq!(s.results().next().map(|b| b.id.as_str()), Some("b"));
+    assert_eq!(s.snapshot()["incomplete_books"], 1);
+    for bad in [
+        ("filter.mark.toggle", json!({"mark": "nope"})),
+        ("filter.missing.toggle", json!({"field": "reviewed"})),
+        ("book.edit", json!({"id": "a", "fields": {"reviewed": "yes"}})),
+        ("book.review", json!({"id": "zzz"})),
+    ] {
+        assert!(s.run(bad.0, &bad.1).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
 fn edits_are_validated_and_reset() {
     let (mut s, _) = session();
     let bad = [
