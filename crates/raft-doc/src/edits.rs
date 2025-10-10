@@ -23,6 +23,8 @@ pub enum Field {
     Categories,
     Tags,
     Description,
+    /// Not metadata: the "reviewed by hand" mark ("1" or absent).
+    Reviewed,
 }
 
 impl Field {
@@ -38,6 +40,16 @@ impl Field {
         Self::Description,
     ];
 
+    /// Fields a book is incomplete without (publisher and ISBN are often unknowable).
+    pub const REQUIRED: [Field; 6] = [
+        Self::Title,
+        Self::Authors,
+        Self::Year,
+        Self::Language,
+        Self::Categories,
+        Self::Description,
+    ];
+
     pub fn slug(self) -> &'static str {
         match self {
             Self::Title => "title",
@@ -49,11 +61,15 @@ impl Field {
             Self::Categories => "categories",
             Self::Tags => "tags",
             Self::Description => "description",
+            Self::Reviewed => "reviewed",
         }
     }
 
     pub fn from_slug(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|f| f.slug() == s)
+        Self::ALL
+            .into_iter()
+            .chain([Self::Reviewed])
+            .find(|f| f.slug() == s)
     }
 
     /// Fields whose value is a list (stored as a JSON array of strings).
@@ -87,6 +103,7 @@ pub fn field_value(book: &Book, field: Field) -> String {
         Field::Categories => list(&book.categories),
         Field::Tags => list(&book.tags),
         Field::Description => book.description.clone(),
+        Field::Reviewed => if book.reviewed { "1" } else { "" }.to_owned(),
     }
 }
 
@@ -133,16 +150,18 @@ pub fn apply(book: &mut Book, field: Field, value: &str) {
             }
         }
         Field::Description => book.description = text(),
+        Field::Reviewed => book.reviewed = value.trim() == "1",
     }
 }
 
-/// `book` with all its corrections applied.
+/// `book` with all its corrections applied, and its `edited` mark set.
 pub fn edited(book: &Book, overrides: &Overrides) -> Book {
     let mut b = book.clone();
     if let Some(fields) = overrides.get(&book.id) {
         for (field, value) in fields {
             apply(&mut b, *field, value);
         }
+        b.edited = fields.keys().any(|f| *f != Field::Reviewed);
     }
     b
 }
@@ -208,5 +227,28 @@ mod tests {
         );
         assert_eq!(Field::from_slug("isbn"), Some(Field::Isbn));
         assert_eq!(Field::from_slug("nope"), None);
+        assert_eq!(Field::from_slug("reviewed"), Some(Field::Reviewed));
+    }
+
+    #[test]
+    fn marks_follow_corrections() {
+        let mut o = Overrides::new();
+        let mut b = book();
+        b.description = "x".into();
+        b.categories = vec!["ml".into()];
+        assert!(!b.is_incomplete());
+        b.year = None;
+        assert!(b.is_incomplete());
+        assert!(b.lacks(Field::Year) && b.lacks(Field::Isbn) && !b.lacks(Field::Authors));
+        assert_eq!(edited(&b, &o), b);
+        o.entry("x".into())
+            .or_default()
+            .insert(Field::Reviewed, "1".into());
+        let r = edited(&b, &o);
+        assert!(r.reviewed && !r.edited && !r.is_incomplete());
+        o.entry("x".into())
+            .or_default()
+            .insert(Field::Year, "2020".into());
+        assert!(edited(&b, &o).edited);
     }
 }
