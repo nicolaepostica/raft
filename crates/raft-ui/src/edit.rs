@@ -44,6 +44,22 @@ impl Draft {
         }
     }
 
+    /// Copies one field from `other`, keeping the other unsaved changes.
+    pub fn take(&mut self, other: &Draft, field: Field) {
+        match field {
+            Field::Title => self.title.clone_from(&other.title),
+            Field::Authors => self.authors.clone_from(&other.authors),
+            Field::Year => self.year.clone_from(&other.year),
+            Field::Language => self.language.clone_from(&other.language),
+            Field::Publisher => self.publisher.clone_from(&other.publisher),
+            Field::Isbn => self.isbn.clone_from(&other.isbn),
+            Field::Categories => self.categories.clone_from(&other.categories),
+            Field::Tags => self.tags.clone_from(&other.tags),
+            Field::Description => self.description.clone_from(&other.description),
+            Field::Reviewed => self.reviewed = other.reviewed,
+        }
+    }
+
     /// The fields that differ from `book`, as `book.edit` params.
     pub fn changes(&self, book: &Book) -> Map<String, Value> {
         let current = Self::from_book(book);
@@ -98,7 +114,13 @@ pub fn label(field: Field) -> &'static str {
 }
 
 /// Field label, with a marker and a per-field reset when the field is corrected.
-fn field_label(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book, field: Field) -> egui::Response {
+fn field_label(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    book: &Book,
+    field: Field,
+    reset: &mut Option<Field>,
+) -> egui::Response {
     let edited = app.session.edited_fields(&book.id).contains(&field);
     ui.horizontal(|ui| {
         let resp = ui.label(label(field));
@@ -131,9 +153,7 @@ fn field_label(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book, field: Field) -
                     "book.edit.reset",
                     json!({ "id": book.id, "field": field.slug() }),
                 );
-                if let Some(b) = app.session.book(&book.id).cloned() {
-                    app.edit = Some(Draft::from_book(&b));
-                }
+                *reset = Some(field);
             }
         }
         resp
@@ -166,61 +186,10 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         .weak(),
     );
     ui.add_space(6.0);
-    let width = ui.available_width().min(640.0);
-    let single = |ui: &mut egui::Ui, text: &mut String, lbl: &egui::Response, hint: &str| {
-        ui.add(
-            egui::TextEdit::singleline(text)
-                .hint_text(hint)
-                .desired_width(width),
-        )
-        .labelled_by(lbl.id);
-    };
-    let l = field_label(app, ui, book, Field::Title);
-    single(ui, &mut draft.title, &l, "titlul din carte, netradus");
-    let l = field_label(app, ui, book, Field::Authors);
-    single(ui, &mut draft.authors, &l, "separați prin virgulă");
-    let l = field_label(app, ui, book, Field::Year);
-    single(ui, &mut draft.year, &l, "gol = necunoscut");
-    let l = field_label(app, ui, book, Field::Language);
-    single(ui, &mut draft.language, &l, "ru, en, ro…");
-    let l = field_label(app, ui, book, Field::Publisher);
-    single(ui, &mut draft.publisher, &l, "");
-    let l = field_label(app, ui, book, Field::Isbn);
-    single(ui, &mut draft.isbn, &l, "");
-    let l = field_label(app, ui, book, Field::Tags);
-    single(ui, &mut draft.tags, &l, "separate prin virgulă");
-    let l = field_label(app, ui, book, Field::Description);
-    ui.add(
-        egui::TextEdit::multiline(&mut draft.description)
-            .desired_width(width)
-            .desired_rows(4),
-    )
-    .labelled_by(l.id);
-    field_label(app, ui, book, Field::Categories);
-    let categories = app.session.catalog().categories.clone();
-    egui::Grid::new("edit-categories")
-        .num_columns(3)
-        .show(ui, |ui| {
-            for (i, c) in categories.iter().enumerate() {
-                let mut on = draft.categories.contains(&c.slug);
-                if ui.checkbox(&mut on, &c.name).changed() {
-                    if on {
-                        draft.categories.insert(c.slug.clone());
-                    } else {
-                        draft.categories.remove(&c.slug);
-                    }
-                }
-                if i % 3 == 2 {
-                    ui.end_row();
-                }
-            }
-        });
-    ui.add_space(8.0);
     ui.checkbox(
         &mut draft.reviewed,
         "Verificată: ce lipsește nu se poate afla (nu mai apare la „date incomplete”)",
     );
-    ui.add_space(8.0);
     let changes = draft.changes(book);
     let next = next_result(app, &book.id);
     let mut close = false;
@@ -278,5 +247,56 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     if let Some(status) = &app.session.status {
         ui.colored_label(ui.visuals().warn_fg_color, status);
     }
+    ui.add_space(6.0);
+    let mut reset = None;
+    let width = ui.available_width().min(640.0);
+    let single = |ui: &mut egui::Ui, text: &mut String, lbl: &egui::Response, hint: &str| {
+        ui.add(
+            egui::TextEdit::singleline(text)
+                .hint_text(hint)
+                .desired_width(width),
+        )
+        .labelled_by(lbl.id);
+    };
+    let l = field_label(app, ui, book, Field::Title, &mut reset);
+    single(ui, &mut draft.title, &l, "titlul din carte, netradus");
+    let l = field_label(app, ui, book, Field::Authors, &mut reset);
+    single(ui, &mut draft.authors, &l, "separați prin virgulă");
+    let l = field_label(app, ui, book, Field::Year, &mut reset);
+    single(ui, &mut draft.year, &l, "gol = necunoscut");
+    let l = field_label(app, ui, book, Field::Language, &mut reset);
+    single(ui, &mut draft.language, &l, "ru, en, ro…");
+    let l = field_label(app, ui, book, Field::Publisher, &mut reset);
+    single(ui, &mut draft.publisher, &l, "");
+    let l = field_label(app, ui, book, Field::Isbn, &mut reset);
+    single(ui, &mut draft.isbn, &l, "");
+    let l = field_label(app, ui, book, Field::Tags, &mut reset);
+    single(ui, &mut draft.tags, &l, "separate prin virgulă");
+    let l = field_label(app, ui, book, Field::Description, &mut reset);
+    ui.add(
+        egui::TextEdit::multiline(&mut draft.description)
+            .desired_width(width)
+            .desired_rows(4),
+    )
+    .labelled_by(l.id);
+    field_label(app, ui, book, Field::Categories, &mut reset);
+    let categories = app.session.catalog().categories.clone();
+    egui::Grid::new("edit-categories")
+        .num_columns(3)
+        .show(ui, |ui| {
+            for (i, c) in categories.iter().enumerate() {
+                let mut on = draft.categories.contains(&c.slug);
+                if ui.checkbox(&mut on, &c.name).changed() {
+                    if on {
+                        draft.categories.insert(c.slug.clone());
+                    } else {
+                        draft.categories.remove(&c.slug);
+                    }
+                }
+                if i % 3 == 2 {
+                    ui.end_row();
+                }
+            }
+        });
     app.edit = if close { None } else { Some(draft) };
 }
