@@ -83,6 +83,12 @@ pub struct Book {
     /// Relative cover path (`covers/<id>.webp`).
     pub cover: Option<String>,
     pub added_at: Option<String>,
+    /// Some metadata was corrected by hand (set from the overrides, not the catalog).
+    #[serde(default)]
+    pub edited: bool,
+    /// Checked by hand: its missing fields are known to be unknowable.
+    #[serde(default)]
+    pub reviewed: bool,
 }
 
 impl Book {
@@ -101,6 +107,63 @@ impl Book {
 
     pub fn primary_category(&self) -> Option<&str> {
         self.categories.first().map(String::as_str)
+    }
+
+    /// Whether `field` has no value.
+    pub fn lacks(&self, field: edits::Field) -> bool {
+        edits::field_value(self, field)
+            .trim()
+            .trim_matches(['[', ']'])
+            .is_empty()
+    }
+
+    /// Metadata fields with no value, in form order.
+    pub fn missing(&self) -> Vec<edits::Field> {
+        edits::Field::ALL
+            .into_iter()
+            .filter(|f| self.lacks(*f))
+            .collect()
+    }
+
+    /// Lacks a [required](edits::Field::REQUIRED) field and was not marked as reviewed.
+    pub fn is_incomplete(&self) -> bool {
+        !self.reviewed && edits::Field::REQUIRED.iter().any(|f| self.lacks(*f))
+    }
+
+    pub fn has(&self, mark: Mark) -> bool {
+        match mark {
+            Mark::Edited => self.edited,
+            Mark::Incomplete => self.is_incomplete(),
+            Mark::Reviewed => self.reviewed,
+        }
+    }
+}
+
+/// A state of a book's metadata that can be filtered on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mark {
+    /// Corrected by hand.
+    Edited,
+    /// Lacks a required field and not reviewed yet.
+    Incomplete,
+    /// Marked as checked by hand.
+    Reviewed,
+}
+
+impl Mark {
+    pub const ALL: [Mark; 3] = [Self::Edited, Self::Incomplete, Self::Reviewed];
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Edited => "edited",
+            Self::Incomplete => "incomplete",
+            Self::Reviewed => "reviewed",
+        }
+    }
+
+    pub fn from_slug(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.slug() == s)
     }
 }
 
@@ -141,11 +204,19 @@ pub struct Filters {
     pub formats: BTreeSet<Format>,
     pub year_min: Option<i32>,
     pub year_max: Option<i32>,
+    /// Books having every one of these marks.
+    #[serde(default)]
+    pub marks: BTreeSet<Mark>,
+    /// Books lacking any of these fields.
+    #[serde(default)]
+    pub missing: BTreeSet<edits::Field>,
 }
 
 impl Filters {
     pub fn is_empty(&self) -> bool {
-        self.categories.is_empty()
+        self.marks.is_empty()
+            && self.missing.is_empty()
+            && self.categories.is_empty()
             && self.languages.is_empty()
             && self.formats.is_empty()
             && self.year_min.is_none()
