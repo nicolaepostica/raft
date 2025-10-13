@@ -15,7 +15,8 @@ fn icon_button(
     hint: &str,
     enabled: bool,
 ) -> egui::Response {
-    let button = egui::Button::new(egui::RichText::new(icon).size(20.0)).min_size(egui::vec2(36.0, 30.0));
+    let button =
+        egui::Button::new(egui::RichText::new(icon).size(20.0)).min_size(egui::vec2(36.0, 30.0));
     let resp = ui.add_enabled(enabled, button);
     let name = name.to_owned();
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &name));
@@ -45,8 +46,14 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 if icon_button(ui, "💾", "Salvează", hint, changed).clicked() || save {
                     crate::edit::save(app, &book);
                 }
-            } else if icon_button(ui, "✏", "Corectează metadatele", "Corectează metadatele", true)
-                .clicked()
+            } else if icon_button(
+                ui,
+                "✏",
+                "Corectează metadatele",
+                "Corectează metadatele",
+                true,
+            )
+            .clicked()
             {
                 app.act("view.edit", json!({ "id": book.id }));
             }
