@@ -367,6 +367,34 @@ mod tests {
     }
 
     #[test]
+    fn filters_and_counts_marks() {
+        let mut c = sample();
+        for b in &mut c.books {
+            b.authors = vec!["A".into()];
+            b.description = "d".into();
+        }
+        c.books[1].edited = true;
+        c.books[3].reviewed = true;
+        let i = Index::new(&c);
+        let mut query = Query::default();
+        query.filters.marks.insert(Mark::Incomplete);
+        // Only book 4 lacks the year, and it was reviewed.
+        assert!(search(&c, &i, &query, &[]).is_empty());
+        c.books[3].reviewed = false;
+        assert_eq!(search(&c, &i, &query, &[]), vec![3]);
+        query.filters.marks.insert(Mark::Edited);
+        assert!(search(&c, &i, &query, &[]).is_empty());
+        let f = facets(&c, &i, &query, &[]);
+        assert_eq!(f.marks, vec![(Mark::Edited, 1), (Mark::Incomplete, 1)]);
+        assert!(f.missing.contains(&(Field::Year, 1)));
+        assert!(f.missing.contains(&(Field::Isbn, 4)));
+        let mut query = Query::default();
+        query.filters.missing.insert(Field::Year);
+        assert_eq!(search(&c, &i, &query, &[]), vec![3]);
+        assert!(!query.filters.is_empty());
+    }
+
+    #[test]
     fn normalizes_case_and_diacritics() {
         assert_eq!(normalize("Ștefan Ëжик Ё"), "stefan eжик е");
         assert_eq!(normalize("Йога"), "иога");
