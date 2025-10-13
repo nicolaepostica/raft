@@ -98,11 +98,38 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 if edited > 0 {
                     ui.label(
                         egui::RichText::new(format!(
-                            "{edited} câmp(uri) corectate de tine; restul vin din catalog"
+                            "Corectată manual: {edited} câmp(uri); restul vin din catalog"
                         ))
                         .small()
-                        .weak(),
+                        .color(egui::Color32::from_rgb(70, 140, 230)),
                     );
+                }
+                let missing: Vec<&str> =
+                    book.missing().into_iter().map(crate::edit::label).collect();
+                if !missing.is_empty() || book.reviewed {
+                    ui.horizontal_wrapped(|ui| {
+                        let text = if missing.is_empty() {
+                            "Nu lipsește nimic".to_owned()
+                        } else {
+                            format!("Lipsește: {}", missing.join(", ").to_lowercase())
+                        };
+                        let text = egui::RichText::new(text);
+                        if book.is_incomplete() {
+                            ui.label(text.color(ui.visuals().warn_fg_color));
+                        } else {
+                            ui.label(text.weak());
+                        }
+                        let mut reviewed = book.reviewed;
+                        if ui
+                            .checkbox(&mut reviewed, "verificată")
+                            .on_hover_text(
+                                "Ce lipsește nu se poate afla; cartea nu mai apare la „date incomplete”",
+                            )
+                            .changed()
+                        {
+                            app.act("book.review", json!({ "id": book.id, "on": reviewed }));
+                        }
+                    });
                 }
                 if let Some(p) = app.session.progress(&book.id).cloned() {
                     ui.add_space(6.0);
