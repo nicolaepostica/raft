@@ -9,25 +9,47 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         ui.label("Cartea nu mai există în catalog.");
         return;
     };
-    if ui.button("Înapoi la bibliotecă").clicked() {
-        app.act("view.library", json!({}));
-    }
+    let editing = matches!(app.session.route(), raft_doc::Route::Edit { .. });
+    ui.horizontal(|ui| {
+        if ui.button("Înapoi la bibliotecă").clicked() {
+            app.act("view.library", json!({}));
+        }
+        if !editing {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Corectează metadatele").clicked() {
+                    app.act("view.edit", json!({ "id": book.id }));
+                }
+            });
+        }
+    });
     ui.add_space(8.0);
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.horizontal_top(|ui| {
-            match app.covers.get(ui.ctx(), app.files.as_ref(), &book) {
-                Some(t) => {
-                    let size = t.size_vec2();
-                    let scale = (300.0 / size.x).min(420.0 / size.y);
-                    ui.add(egui::Image::new((t.id(), size * scale)));
+            ui.vertical(|ui| {
+                match app.covers.get(ui.ctx(), app.files.as_ref(), &book) {
+                    Some(t) => {
+                        let size = t.size_vec2();
+                        let scale = (300.0 / size.x).min(420.0 / size.y);
+                        ui.add(egui::Image::new((t.id(), size * scale)));
+                    }
+                    None => {
+                        ui.add_sized([300.0, 420.0], egui::Label::new("fără copertă"));
+                    }
                 }
-                None => {
-                    ui.add_sized([300.0, 420.0], egui::Label::new("fără copertă"));
+                if editing {
+                    ui.add_space(8.0);
+                    if ui
+                        .button("Deschide în aplicația externă")
+                        .on_hover_text("Ca să verifici datele în carte")
+                        .clicked()
+                    {
+                        app.act("book.open_external", json!({ "id": book.id }));
+                    }
                 }
-            }
+            });
             ui.add_space(16.0);
             ui.vertical(|ui| {
-                if matches!(app.session.route(), raft_doc::Route::Edit { .. }) {
+                if editing {
                     crate::edit::form(app, ui, &book);
                     return;
                 }
@@ -89,9 +111,6 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     app.open_book_button(ui, &book);
                     if ui.button("Deschide în aplicația externă").clicked() {
                         app.act("book.open_external", json!({ "id": book.id }));
-                    }
-                    if ui.button("Corectează metadatele").clicked() {
-                        app.act("view.edit", json!({ "id": book.id }));
                     }
                 });
                 let edited = app.session.edited_fields(&book.id).len();
