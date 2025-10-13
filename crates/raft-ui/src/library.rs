@@ -130,7 +130,7 @@ fn mark_label(m: Mark) -> &'static str {
 fn marks(
     app: &mut RaftUi,
     ui: &mut egui::Ui,
-    facets: &raft_search::Facets,
+    facets: &raft_engine::Facets,
     filters: &raft_doc::Filters,
 ) {
     ui.strong("Date");
