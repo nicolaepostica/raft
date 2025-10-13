@@ -298,5 +298,10 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
                 }
             }
         });
+    if let Some(field) = reset
+        && let Some(fresh) = app.session.book(&book.id).map(Draft::from_book)
+    {
+        draft.take(&fresh, field);
+    }
     app.edit = if close { None } else { Some(draft) };
 }
