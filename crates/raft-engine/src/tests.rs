@@ -288,8 +288,11 @@ fn marks_filter_and_reviewing_survives_reset() {
         .unwrap();
     s.run("book.edit.reset", &json!({"id": "b"})).unwrap();
     assert!(s.book("b").unwrap().reviewed);
-    s.run("book.edit", &json!({"id": "b", "fields": {"reviewed": false}}))
-        .unwrap();
+    s.run(
+        "book.edit",
+        &json!({"id": "b", "fields": {"reviewed": false}}),
+    )
+    .unwrap();
     assert_eq!(s.result_count(), 1);
     s.run("filter.mark.toggle", &json!({"mark": "incomplete"}))
         .unwrap();
@@ -304,7 +307,10 @@ fn marks_filter_and_reviewing_survives_reset() {
     for bad in [
         ("filter.mark.toggle", json!({"mark": "nope"})),
         ("filter.missing.toggle", json!({"field": "reviewed"})),
-        ("book.edit", json!({"id": "a", "fields": {"reviewed": "yes"}})),
+        (
+            "book.edit",
+            json!({"id": "a", "fields": {"reviewed": "yes"}}),
+        ),
         ("book.review", json!({"id": "zzz"})),
     ] {
         assert!(s.run(bad.0, &bad.1).is_err(), "{bad:?}");
