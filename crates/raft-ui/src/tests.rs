@@ -180,6 +180,31 @@ fn processing_incomplete_books_one_after_another() {
 }
 
 #[test]
+fn resetting_one_field_refreshes_only_that_field_of_the_draft() {
+    let mut h = harness();
+    h.state_mut()
+        .run(
+            "book.edit",
+            serde_json::json!({"id": "a", "fields": {"title": "Corectat"}}),
+        )
+        .unwrap();
+    h.state_mut()
+        .run("view.edit", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("An").click();
+    h.run();
+    h.get_by_label("An").type_text("9");
+    h.run();
+    h.get_by_label("din catalog").click();
+    h.run();
+    h.run();
+    let d = h.state().edit.clone().unwrap();
+    assert_eq!(d.title, "Rust in Action");
+    assert_eq!(d.year, "20219");
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
