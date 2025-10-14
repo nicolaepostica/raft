@@ -55,6 +55,8 @@ pub struct CommandSpec {
     /// Menu path, `"View/Library"`; `None` = not in a menu.
     pub menu: Option<&'static str>,
     pub shortcut: Option<Shortcut>,
+    /// More shortcuts for the same command (not shown in menus).
+    pub also: &'static [Shortcut],
     /// Human-readable description of the JSON params.
     pub params: &'static str,
     pub enabled: Enabled,
@@ -136,6 +138,7 @@ const fn spec(id: &'static str, label: &'static str, run: Run) -> CommandSpec {
         label,
         menu: None,
         shortcut: None,
+        also: &[],
         params: "{}",
         enabled: always,
         run,
@@ -218,10 +221,24 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("sort.set", "Sortare", sort_set)
     },
     CommandSpec {
-        menu: Some("View/Library"),
-        shortcut: key("Escape"),
+        menu: Some("View/Back"),
+        shortcut: key("Backspace"),
+        also: &[
+            Shortcut {
+                key: "ArrowLeft",
+                command: false,
+                shift: false,
+                alt: true,
+            },
+            Shortcut {
+                key: "Escape",
+                command: false,
+                shift: false,
+                alt: false,
+            },
+        ],
         enabled: not_library,
-        ..spec("view.library", "Biblioteca", view_library)
+        ..spec("view.library", "Înapoi", view_library)
     },
     CommandSpec {
         params: r#"{"id": string}"#,
