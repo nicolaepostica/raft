@@ -77,6 +77,21 @@ pub fn error(msg: impl std::fmt::Display) -> Value {
 }
 
 /// The command list, for `{"method": "commands"}`.
+fn shortcut_name(s: crate::Shortcut) -> String {
+    let mut k = String::new();
+    if s.command {
+        k.push_str("Ctrl+");
+    }
+    if s.shift {
+        k.push_str("Shift+");
+    }
+    if s.alt {
+        k.push_str("Alt+");
+    }
+    k.push_str(s.key);
+    k
+}
+
 pub fn commands_json() -> Value {
     Value::Array(
         registry()
@@ -86,14 +101,8 @@ pub fn commands_json() -> Value {
                     "id": c.id,
                     "label": c.label,
                     "menu": c.menu,
-                    "shortcut": c.shortcut.map(|s| {
-                        let mut k = String::new();
-                        if s.command { k.push_str("Ctrl+"); }
-                        if s.shift { k.push_str("Shift+"); }
-                        if s.alt { k.push_str("Alt+"); }
-                        k.push_str(s.key);
-                        k
-                    }),
+                    "shortcut": c.shortcut.map(shortcut_name),
+                    "also": c.also.iter().copied().map(shortcut_name).collect::<Vec<_>>(),
                     "params": c.params,
                 })
             })
