@@ -1,6 +1,6 @@
 //! Metadata correction form on the book page.
 //!
-//! The form only edits a local draft; "Salvează" sends the changed fields in one
+//! The form only edits a local draft; the save icon in the page's top corner sends the changed fields in one
 //! `book.edit` command (one undo step). Corrections are stored in `raft.db`.
 
 use std::collections::BTreeSet;
@@ -161,6 +161,33 @@ fn field_label(
     .inner
 }
 
+/// Saves the draft of `book`, if it has changes; true when saved.
+pub fn save(app: &mut RaftUi, book: &Book) -> bool {
+    let Some(changes) = app
+        .edit
+        .as_ref()
+        .filter(|d| d.book_id == book.id)
+        .map(|d| d.changes(book))
+        .filter(|c| !c.is_empty())
+    else {
+        return false;
+    };
+    let ok = app
+        .run("book.edit", json!({ "id": book.id, "fields": changes }))
+        .is_ok();
+    if ok {
+        app.edit = None;
+    }
+    ok
+}
+
+/// Whether the draft of `book` differs from it.
+pub fn has_changes(app: &RaftUi, book: &Book) -> bool {
+    app.edit
+        .as_ref()
+        .is_some_and(|d| d.book_id == book.id && !d.changes(book).is_empty())
+}
+
 /// The result after `id` in the library's current results, with `id`'s 1-based
 /// position and the result count. Computed before saving, so the next book is
 /// found even when the save takes the current one out of the results.
@@ -194,18 +221,6 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     let next = next_result(app, &book.id);
     let mut close = false;
     ui.horizontal(|ui| {
-        if ui
-            .add_enabled(!changes.is_empty(), egui::Button::new("Salvează"))
-            .clicked()
-        {
-            let id = book.id.clone();
-            if app
-                .run("book.edit", json!({ "id": id, "fields": changes }))
-                .is_ok()
-            {
-                close = true;
-            }
-        }
         if let Some((next, pos, total)) = &next {
             let text = if changes.is_empty() {
                 "Următoarea"
