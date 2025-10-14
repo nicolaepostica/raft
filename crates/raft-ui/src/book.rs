@@ -7,22 +7,6 @@ use crate::{RaftUi, language_name};
 const SAVE: egui::KeyboardShortcut =
     egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
 
-/// A large icon button with a hover text; `name` is its accessible label.
-fn icon_button(
-    ui: &mut egui::Ui,
-    icon: &str,
-    name: &str,
-    hint: &str,
-    enabled: bool,
-) -> egui::Response {
-    let button =
-        egui::Button::new(egui::RichText::new(icon).size(20.0)).min_size(egui::vec2(36.0, 30.0));
-    let resp = ui.add_enabled(enabled, button);
-    let name = name.to_owned();
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &name));
-    resp.on_hover_text(hint).on_disabled_hover_text(hint)
-}
-
 pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let Some(book) = app.session.book(id).cloned() else {
         ui.label("Cartea nu mai există în catalog.");
@@ -30,9 +14,12 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     };
     let editing = matches!(app.session.route(), raft_doc::Route::Edit { .. });
     ui.horizontal(|ui| {
-        if ui.button("Înapoi la bibliotecă").clicked() {
-            app.act("view.library", json!({}));
-        }
+        let hint = if editing {
+            "Înapoi la pagina cărții"
+        } else {
+            "Înapoi la bibliotecă"
+        };
+        crate::back_button(app, ui, hint);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // One spot: the pencil opens the form, which turns it into the save icon.
             if editing {
@@ -43,10 +30,10 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     "Salvează: nu ai modificat nimic"
                 };
                 let save = ui.input_mut(|i| i.consume_shortcut(&SAVE));
-                if icon_button(ui, "💾", "Salvează", hint, changed).clicked() || save {
+                if crate::icon_button(ui, "💾", "Salvează", hint, changed).clicked() || save {
                     crate::edit::save(app, &book);
                 }
-            } else if icon_button(
+            } else if crate::icon_button(
                 ui,
                 "✏",
                 "Corectează metadatele",
