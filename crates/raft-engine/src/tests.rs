@@ -114,7 +114,7 @@ fn registry_ids_are_unique_and_shortcuts_distinct() {
     assert_eq!(ids.len(), n);
     let mut keys: Vec<_> = registry()
         .iter()
-        .filter_map(|c| c.shortcut)
+        .flat_map(|c| c.shortcut.into_iter().chain(c.also.iter().copied()))
         .map(|s| (s.key, s.command, s.shift, s.alt))
         .collect();
     keys.sort_unstable();
