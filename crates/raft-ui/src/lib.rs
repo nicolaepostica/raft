@@ -207,8 +207,8 @@ pub(crate) fn icon_button(
     hint: &str,
     enabled: bool,
 ) -> egui::Response {
-    let button = egui::Button::new(egui::RichText::new(icon).size(20.0))
-        .min_size(egui::vec2(36.0, 30.0));
+    let button =
+        egui::Button::new(egui::RichText::new(icon).size(20.0)).min_size(egui::vec2(36.0, 30.0));
     let resp = ui.add_enabled(enabled, button);
     let name = name.to_owned();
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &name));
