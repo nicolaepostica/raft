@@ -126,18 +126,20 @@ impl RaftUi {
         }
         let typing = ctx.egui_wants_keyboard_input();
         for spec in registry() {
-            let Some(sc) = spec.shortcut else { continue };
-            let Some(shortcut) = keyboard_shortcut(sc) else {
-                continue;
-            };
-            let plain = !sc.command && !sc.alt;
-            if typing && plain {
-                continue;
-            }
-            if self.session.enabled(spec.id).is_ok()
-                && ctx.input_mut(|i| i.consume_shortcut(&shortcut))
-            {
-                self.act(spec.id, Value::Null);
+            for sc in spec.shortcut.iter().chain(spec.also) {
+                let Some(shortcut) = keyboard_shortcut(*sc) else {
+                    continue;
+                };
+                let plain = !sc.command && !sc.alt;
+                if typing && plain {
+                    continue;
+                }
+                if self.session.enabled(spec.id).is_ok()
+                    && ctx.input_mut(|i| i.consume_shortcut(&shortcut))
+                {
+                    self.act(spec.id, Value::Null);
+                    break;
+                }
             }
         }
     }
@@ -194,6 +196,30 @@ impl RaftUi {
         if ui.button("Citește").clicked() {
             self.act("book.read", json!({ "id": book.id }));
         }
+    }
+}
+
+/// A large icon button with a hover text; `name` is its accessible label.
+pub(crate) fn icon_button(
+    ui: &mut egui::Ui,
+    icon: &str,
+    name: &str,
+    hint: &str,
+    enabled: bool,
+) -> egui::Response {
+    let button = egui::Button::new(egui::RichText::new(icon).size(20.0))
+        .min_size(egui::vec2(36.0, 30.0));
+    let resp = ui.add_enabled(enabled, button);
+    let name = name.to_owned();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &name));
+    resp.on_hover_text(hint).on_disabled_hover_text(hint)
+}
+
+/// The back icon (Backspace, Alt+Left or Esc).
+pub(crate) fn back_button(app: &mut RaftUi, ui: &mut egui::Ui, hint: &str) {
+    let hint = format!("{hint} (Backspace, Alt+←, Esc)");
+    if icon_button(ui, "⬅", "Înapoi", &hint, true).clicked() {
+        app.act("view.library", serde_json::json!({}));
     }
 }
 
