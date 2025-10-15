@@ -233,6 +233,43 @@ fn back_icon_and_keys_go_up_one_level() {
 }
 
 #[test]
+fn year_slider_drags_the_nearest_handle() {
+    let mut h = harness();
+    h.state_mut()
+        .run(
+            "book.edit",
+            serde_json::json!({"id": "b", "fields": {"year": 1869}}),
+        )
+        .unwrap();
+    h.state_mut()
+        .run("view.library", serde_json::json!({}))
+        .unwrap();
+    h.run();
+    let r = h.get_by_label("Ani: 1869–2021").rect();
+    // The track spans the rect minus 8 px at each end.
+    let at = |t: f32| egui::pos2(r.left() + 8.0 + t * (r.width() - 16.0), r.center().y);
+    h.drag_at(at(1.0));
+    h.run();
+    h.hover_at(at(0.5));
+    h.run();
+    h.drop_at(at(0.5));
+    h.run();
+    let f = h.state().session.query().filters.clone();
+    assert_eq!(f.year_min, None);
+    assert_eq!(f.year_max, Some(1945));
+    assert_eq!(h.state().session.result_count(), 1);
+    // Back to the end: no upper limit.
+    h.drag_at(at(0.5));
+    h.run();
+    h.hover_at(at(1.0));
+    h.run();
+    h.drop_at(at(1.0));
+    h.run();
+    assert_eq!(h.state().session.query().filters.year_max, None);
+    assert_eq!(h.state().session.result_count(), 2);
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
