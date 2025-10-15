@@ -205,6 +205,34 @@ fn resetting_one_field_refreshes_only_that_field_of_the_draft() {
 }
 
 #[test]
+fn back_icon_and_keys_go_up_one_level() {
+    let mut h = harness();
+    h.state_mut()
+        .run("view.edit", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    // Backspace while typing edits the text, it does not navigate.
+    h.get_by_label("Titlu").click();
+    h.run();
+    h.key_press(egui::Key::Backspace);
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Edit { id: "a".into() });
+    h.get_by_label("Înapoi").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Book { id: "a".into() });
+    h.key_press_modifiers(egui::Modifiers::ALT, egui::Key::ArrowLeft);
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Library);
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.key_press(egui::Key::Backspace);
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Library);
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
