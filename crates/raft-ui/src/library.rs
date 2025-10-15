@@ -74,22 +74,26 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
 
         ui.strong("Ani");
         let (lo, hi) = facets.years.unwrap_or((1900, 2030));
-        let mut min = filters.year_min.unwrap_or(lo);
-        let mut max = filters.year_max.unwrap_or(hi);
-        let changed = ui
+        let mut min = filters.year_min.unwrap_or(lo).clamp(lo, hi);
+        let mut max = filters.year_max.unwrap_or(hi).clamp(min, hi);
+        let slid = year_slider(ui, lo, hi, &mut min, &mut max);
+        let typed = ui
             .horizontal(|ui| {
                 let from = ui.label("de la");
                 let a = ui
-                    .add(egui::DragValue::new(&mut min).range(1000..=max))
+                    .add(egui::DragValue::new(&mut min).range(lo..=max))
                     .labelled_by(from.id);
                 let to = ui.label("până la");
                 let b = ui
-                    .add(egui::DragValue::new(&mut max).range(min..=3000))
+                    .add(egui::DragValue::new(&mut max).range(min..=hi))
                     .labelled_by(to.id);
                 a.changed() || b.changed()
             })
             .inner;
-        if changed {
+        if slid || typed {
+            // A handle at the end of the range means "no limit" on that side.
+            let min = Some(min).filter(|m| *m > lo);
+            let max = Some(max).filter(|m| *m < hi);
             app.act("filter.years", json!({ "min": min, "max": max }));
         }
         if (filters.year_min.is_some() || filters.year_max.is_some())
@@ -116,6 +120,76 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
             }
         }
     });
+}
+
+/// A slider with two handles over `lo..=hi`; returns true when a handle moved.
+/// Dragging moves the handle nearest to where the drag started; a click moves
+/// the nearest handle there; with focus, ←/→ move the lower and ↓/↑ the upper.
+fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32) -> bool {
+    let width = ui.available_width().clamp(80.0, 200.0);
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(width, 22.0), egui::Sense::click_and_drag());
+    let (from, to) = (*min, *max);
+    resp.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Slider, true, format!("Ani: {from}–{to}"))
+    });
+    let span = (hi - lo).max(1) as f32;
+    let track = rect.shrink2(egui::vec2(8.0, 0.0));
+    let x_of = |y: i32| track.left() + (y - lo) as f32 / span * track.width();
+    let year_at = |x: f32| {
+        let t = ((x - track.left()) / track.width()).clamp(0.0, 1.0);
+        lo + (t * span).round() as i32
+    };
+    let (old_min, old_max) = (*min, *max);
+    // Which handle is held: false = lower, true = upper.
+    let held = resp.id.with("upper");
+    if let Some(pos) = resp.interact_pointer_pos() {
+        if resp.drag_started() || resp.clicked() {
+            let upper = if *min == *max {
+                pos.x > x_of(*max)
+            } else {
+                (pos.x - x_of(*max)).abs() < (pos.x - x_of(*min)).abs()
+            };
+            ui.data_mut(|d| d.insert_temp(held, upper));
+        }
+        let upper = ui.data(|d| d.get_temp::<bool>(held)).unwrap_or(false);
+        let y = year_at(pos.x);
+        if upper {
+            *max = y.max(*min);
+        } else {
+            *min = y.min(*max);
+        }
+    }
+    if resp.has_focus() {
+        ui.input(|i| {
+            let step = |k| i32::from(i.key_pressed(k));
+            *min = (*min + step(egui::Key::ArrowRight) - step(egui::Key::ArrowLeft))
+                .clamp(lo, *max);
+            *max = (*max + step(egui::Key::ArrowUp) - step(egui::Key::ArrowDown))
+                .clamp(*min, hi);
+        });
+    }
+    let v = ui.visuals();
+    let painter = ui.painter_at(rect.expand(2.0));
+    let y = rect.center().y;
+    painter.line_segment(
+        [egui::pos2(track.left(), y), egui::pos2(track.right(), y)],
+        egui::Stroke::new(4.0, v.widgets.inactive.bg_fill),
+    );
+    painter.line_segment(
+        [egui::pos2(x_of(*min), y), egui::pos2(x_of(*max), y)],
+        egui::Stroke::new(4.0, v.selection.bg_fill),
+    );
+    let stroke = if resp.has_focus() {
+        v.selection.stroke
+    } else {
+        v.widgets.inactive.fg_stroke
+    };
+    for x in [x_of(*min), x_of(*max)] {
+        painter.circle(egui::pos2(x, y), 7.0, v.widgets.active.bg_fill, stroke);
+    }
+    resp.on_hover_text("Trage capetele ca să alegi intervalul de ani");
+    (*min, *max) != (old_min, old_max)
 }
 
 fn mark_label(m: Mark) -> &'static str {
