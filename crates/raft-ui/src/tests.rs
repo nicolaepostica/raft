@@ -241,9 +241,6 @@ fn year_slider_drags_the_nearest_handle() {
             serde_json::json!({"id": "b", "fields": {"year": 1869}}),
         )
         .unwrap();
-    h.state_mut()
-        .run("view.library", serde_json::json!({}))
-        .unwrap();
     h.run();
     let r = h.get_by_label("Ani: 1869–2021").rect();
     // The track spans the rect minus 8 px at each end.
