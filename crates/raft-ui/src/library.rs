@@ -163,10 +163,9 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
     if resp.has_focus() {
         ui.input(|i| {
             let step = |k| i32::from(i.key_pressed(k));
-            *min = (*min + step(egui::Key::ArrowRight) - step(egui::Key::ArrowLeft))
-                .clamp(lo, *max);
-            *max = (*max + step(egui::Key::ArrowUp) - step(egui::Key::ArrowDown))
-                .clamp(*min, hi);
+            *min =
+                (*min + step(egui::Key::ArrowRight) - step(egui::Key::ArrowLeft)).clamp(lo, *max);
+            *max = (*max + step(egui::Key::ArrowUp) - step(egui::Key::ArrowDown)).clamp(*min, hi);
         });
     }
     let v = ui.visuals();
