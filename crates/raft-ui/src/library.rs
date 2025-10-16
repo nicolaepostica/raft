@@ -144,7 +144,8 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
     // Which handle is held: false = lower, true = upper.
     let held = resp.id.with("upper");
     if let Some(pos) = resp.interact_pointer_pos() {
-        if resp.drag_started() || resp.clicked() {
+        // Pick the handle on the press itself, before any drag or click is recognized.
+        if ui.input(|i| i.pointer.primary_pressed()) {
             let upper = if *min == *max {
                 pos.x > x_of(*max)
             } else {
