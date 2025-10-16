@@ -243,9 +243,8 @@ fn year_slider_drags_the_nearest_handle() {
         .unwrap();
     h.run();
     // The track spans the rect minus 8 px at each end.
-    let at_in = |r: egui::Rect, t: f32| {
-        egui::pos2(r.left() + 8.0 + t * (r.width() - 16.0), r.center().y)
-    };
+    let at_in =
+        |r: egui::Rect, t: f32| egui::pos2(r.left() + 8.0 + t * (r.width() - 16.0), r.center().y);
     let r = h.get_by_label("Ani: 1869–2021").rect();
     let at = |t: f32| at_in(r, t);
     h.drag_at(at(1.0));
