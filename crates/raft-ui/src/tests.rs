@@ -242,9 +242,12 @@ fn year_slider_drags_the_nearest_handle() {
         )
         .unwrap();
     h.run();
-    let r = h.get_by_label("Ani: 1869–2021").rect();
     // The track spans the rect minus 8 px at each end.
-    let at = |t: f32| egui::pos2(r.left() + 8.0 + t * (r.width() - 16.0), r.center().y);
+    let at_in = |r: egui::Rect, t: f32| {
+        egui::pos2(r.left() + 8.0 + t * (r.width() - 16.0), r.center().y)
+    };
+    let r = h.get_by_label("Ani: 1869–2021").rect();
+    let at = |t: f32| at_in(r, t);
     h.drag_at(at(1.0));
     h.run();
     h.hover_at(at(0.5));
@@ -255,13 +258,13 @@ fn year_slider_drags_the_nearest_handle() {
     assert_eq!(f.year_min, None);
     assert_eq!(f.year_max, Some(1945));
     assert_eq!(h.state().session.result_count(), 1);
-    // Back to the end: no upper limit.
+    // Back to the end: no upper limit. The slider moved up (one language less).
+    let r = h.get_by_label("Ani: 1869–1945").rect();
+    let at = |t: f32| at_in(r, t);
     h.drag_at(at(0.5));
     h.run();
-    eprintln!("after press {:?}", h.state().session.query().filters);
     h.hover_at(at(1.0));
     h.run();
-    eprintln!("after move {:?}", h.state().session.query().filters);
     h.drop_at(at(1.0));
     h.run();
     assert_eq!(h.state().session.query().filters.year_max, None);
