@@ -76,7 +76,6 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         let (lo, hi) = facets.years.unwrap_or((1900, 2030));
         let mut min = filters.year_min.unwrap_or(lo).clamp(lo, hi);
         let mut max = filters.year_max.unwrap_or(hi).clamp(min, hi);
-        let slid = year_slider(ui, lo, hi, &mut min, &mut max);
         let typed = ui
             .horizontal(|ui| {
                 let from = ui.label("de la");
@@ -90,6 +89,7 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
                 a.changed() || b.changed()
             })
             .inner;
+        let slid = year_slider(ui, lo, hi, &mut min, &mut max);
         if slid || typed {
             // A handle at the end of the range means "no limit" on that side.
             let min = Some(min).filter(|m| *m > lo);
