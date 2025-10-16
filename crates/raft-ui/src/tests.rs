@@ -258,8 +258,10 @@ fn year_slider_drags_the_nearest_handle() {
     // Back to the end: no upper limit.
     h.drag_at(at(0.5));
     h.run();
+    eprintln!("after press {:?}", h.state().session.query().filters);
     h.hover_at(at(1.0));
     h.run();
+    eprintln!("after move {:?}", h.state().session.query().filters);
     h.drop_at(at(1.0));
     h.run();
     assert_eq!(h.state().session.query().filters.year_max, None);
