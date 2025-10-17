@@ -173,6 +173,11 @@ impl UserDb {
                  value TEXT NOT NULL,
                  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                  PRIMARY KEY (book_id, field)
+             );
+             CREATE TABLE IF NOT EXISTS removed(
+                 book_id TEXT PRIMARY KEY,
+                 path TEXT NOT NULL,
+                 removed_at INTEGER NOT NULL
              );",
         )?;
         Ok(Self { conn })
@@ -261,6 +266,28 @@ impl UserDb {
             params![book_id, field.slug()],
         )?;
         Ok(())
+    }
+
+    /// Records a book removed from the library (its file went to the trash).
+    pub fn save_removed(&self, book_id: &str, path: &str, at: i64) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO removed(book_id, path, removed_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![book_id, path, at],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_removed(&self, book_id: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM removed WHERE book_id = ?1", [book_id])?;
+        Ok(())
+    }
+
+    /// Ids of the removed books, hidden even while the catalog still lists them.
+    pub fn load_removed(&self) -> Result<Vec<BookId>, StoreError> {
+        let mut stmt = self.conn.prepare("SELECT book_id FROM removed")?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     pub fn delete_progress(&self, book_id: &str) -> Result<(), StoreError> {
