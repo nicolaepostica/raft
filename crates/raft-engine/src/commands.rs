@@ -73,17 +73,6 @@ impl std::fmt::Debug for CommandSpec {
     }
 }
 
-fn has_book(s: &Session) -> Result<(), String> {
-    match opt_book(s) {
-        true => Ok(()),
-        false => Err("no book selected".into()),
-    }
-}
-
-fn opt_book(s: &Session) -> bool {
-    s.current_book().is_some()
-}
-
 fn always(_: &Session) -> Result<(), String> {
     Ok(())
 }
@@ -277,13 +266,11 @@ static REGISTRY: &[CommandSpec] = &[
     },
     CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
-        enabled: has_book,
         record: false,
         ..spec("book.show_in_folder", "Arată în dosar", show_in_folder)
     },
     CommandSpec {
         params: r#"{"id": string?, "confirm": true} — moves the file to the trash; not undoable"#,
-        enabled: has_book,
         record: false,
         ..spec("book.delete", "Șterge cartea", book_delete)
     },
