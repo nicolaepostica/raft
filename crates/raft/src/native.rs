@@ -87,6 +87,62 @@ impl Backend for NativeBackend {
             .map_err(|e| format!("xdg-open failed: {e}"))
     }
 
+    fn show_in_folder(&self, book: &Book) -> Result<(), String> {
+        let path = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+        if !path.is_file() {
+            return Err(format!("file not found: {}", path.display()));
+        }
+        // The file manager selects the file (FileManager1); else open its folder.
+        let uri = file_uri(&path);
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        std::thread::spawn(move || {
+            let shown = quiet("gdbus")
+                .args([
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.freedesktop.FileManager1",
+                    "--object-path",
+                    "/org/freedesktop/FileManager1",
+                    "--method",
+                    "org.freedesktop.FileManager1.ShowItems",
+                    &format!("['{uri}']"),
+                    "",
+                ])
+                .status()
+                .is_ok_and(|s| s.success());
+            if !shown {
+                let _ = quiet("xdg-open").arg(&dir).status();
+            }
+        });
+        Ok(())
+    }
+
+    fn remove_book(&self, book: &Book) -> Result<(), String> {
+        let path = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+        // Recorded first: a book whose file is gone must not come back on restart.
+        self.user
+            .save_removed(&book.id, &book.path, self.now())
+            .map_err(|e| e.to_string())?;
+        if path.exists() {
+            let out = quiet("gio")
+                .arg("trash")
+                .arg(&path)
+                .stderr(std::process::Stdio::piped())
+                .output();
+            let failed = match out {
+                Ok(o) if o.status.success() => None,
+                Ok(o) => Some(String::from_utf8_lossy(&o.stderr).trim().to_owned()),
+                Err(e) => Some(format!("gio: {e}")),
+            };
+            if let Some(err) = failed {
+                let _ = self.user.delete_removed(&book.id);
+                return Err(format!("could not move the file to the trash: {err}"));
+            }
+        }
+        Ok(())
+    }
+
     fn save_override(&self, o: &Override) -> Result<(), String> {
         self.user.save_override(o).map_err(|e| e.to_string())
     }
@@ -102,6 +158,28 @@ impl Backend for NativeBackend {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
     }
+}
+
+/// A command with no input and no output (it must not touch the terminal).
+fn quiet(program: &str) -> std::process::Command {
+    let mut c = std::process::Command::new(program);
+    c.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    c
+}
+
+/// `file://` URI of an absolute path, percent-encoded.
+pub fn file_uri(path: &Path) -> String {
+    let mut uri = String::from("file://");
+    for b in path.as_os_str().as_encoded_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(b) {
+            uri.push(char::from(*b));
+        } else {
+            uri.push_str(&format!("%{b:02X}"));
+        }
+    }
+    uri
 }
 
 type PageKey = (BookId, u32, u32);
@@ -250,6 +328,14 @@ fn read_capped(path: &Path, max: usize) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_uris_are_encoded() {
+        assert_eq!(
+            file_uri(Path::new("/b/Ёж 1's.pdf")),
+            "file:///b/%D0%81%D0%B6%201%27s.pdf"
+        );
+    }
 
     #[test]
     fn resolve_refuses_escapes() {
