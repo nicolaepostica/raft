@@ -785,7 +785,9 @@ fn show_in_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         .book(&id)
         .cloned()
         .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
-    s.backend.show_in_folder(&book).map_err(EngineError::Backend)?;
+    s.backend
+        .show_in_folder(&book)
+        .map_err(EngineError::Backend)?;
     Ok(Value::Null)
 }
 
