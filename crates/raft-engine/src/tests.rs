@@ -16,6 +16,9 @@ struct Recorder {
     opened: Arc<Mutex<Vec<String>>>,
     overrides: Arc<Mutex<Vec<StoredEdit>>>,
     fail_overrides: bool,
+    /// Ids passed to `remove_book` / `show_in_folder`.
+    removed: Arc<Mutex<Vec<String>>>,
+    shown: Arc<Mutex<Vec<String>>>,
 }
 
 impl Backend for Recorder {
@@ -61,6 +64,23 @@ impl Backend for Recorder {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push((id.to_owned(), field, None));
+        Ok(())
+    }
+    fn remove_book(&self, b: &Book) -> Result<(), String> {
+        if b.id == "b" {
+            return Err("trash is full".into());
+        }
+        self.removed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(b.id.clone());
+        Ok(())
+    }
+    fn show_in_folder(&self, b: &Book) -> Result<(), String> {
+        self.shown
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(b.id.clone());
         Ok(())
     }
 }
@@ -315,6 +335,30 @@ fn marks_filter_and_reviewing_survives_reset() {
     ] {
         assert!(s.run(bad.0, &bad.1).is_err(), "{bad:?}");
     }
+}
+
+#[test]
+fn deleting_a_book_needs_confirmation_and_forgets_it() {
+    let (mut s, rec) = session();
+    s.run("view.book", &json!({"id": "a"})).unwrap();
+    s.run("book.show_in_folder", &json!({})).unwrap();
+    assert_eq!(*rec.shown.lock().unwrap(), vec!["a"]);
+    assert!(s.run("book.delete", &json!({"id": "a"})).is_err());
+    assert!(s.run("book.delete", &json!({"id": "a", "confirm": false})).is_err());
+    assert!(s.book("a").is_some());
+    // A failed trash keeps the book.
+    assert!(s.run("book.delete", &json!({"id": "b", "confirm": true})).is_err());
+    assert!(s.book("b").is_some());
+    s.run("book.delete", &json!({"confirm": true})).unwrap();
+    assert_eq!(*rec.removed.lock().unwrap(), vec!["a"]);
+    assert!(s.book("a").is_none());
+    assert_eq!(s.route(), &Route::Library);
+    assert_eq!(s.result_count(), 1);
+    assert_eq!(s.book("b").map(|b| b.id.as_str()), Some("b"));
+    // Undo does not bring it back.
+    let _ = s.run("edit.undo", &Value::Null);
+    assert!(s.book("a").is_none());
+    assert!(s.run("book.delete", &json!({"id": "a", "confirm": true})).is_err());
 }
 
 #[test]
