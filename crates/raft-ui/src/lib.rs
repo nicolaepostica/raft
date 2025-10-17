@@ -58,6 +58,8 @@ pub struct RaftUi {
     edit: Option<edit::Draft>,
     search: String,
     focus_search: bool,
+    /// The book whose deletion waits for confirmation.
+    confirm_delete: Option<BookId>,
 }
 
 impl RaftUi {
@@ -73,6 +75,7 @@ impl RaftUi {
             edit: None,
             search,
             focus_search: false,
+            confirm_delete: None,
         }
     }
 
@@ -113,9 +116,60 @@ impl RaftUi {
                 });
             }
         }
+        self.delete_dialog(ui.ctx());
+    }
+
+    /// Asks before a book's file goes to the trash.
+    fn delete_dialog(&mut self, ctx: &egui::Context) {
+        let Some(id) = self.confirm_delete.clone() else {
+            return;
+        };
+        let Some(book) = self.session.book(&id).cloned() else {
+            self.confirm_delete = None;
+            return;
+        };
+        let mut close = false;
+        let modal = egui::Modal::new(egui::Id::new("confirm-delete")).show(ctx, |ui| {
+            ui.set_max_width(460.0);
+            ui.heading("Ștergi cartea?");
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(book.display_title()).strong());
+            ui.add(
+                egui::Label::new(format!(
+                    "Fișierul „{}” se mută în coșul de gunoi, iar cartea dispare din bibliotecă. \
+                     Îl poți recupera din coș; corecturile și progresul rămân în raft.db.",
+                    book.filename
+                ))
+                .wrap(),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button("Mută în coș").clicked() {
+                    let ok = self
+                        .run("book.delete", json!({ "id": id, "confirm": true }))
+                        .is_ok();
+                    if ok {
+                        self.session.status =
+                            Some(format!("„{}” a fost mutată în coș", book.display_title()));
+                        self.edit = None;
+                    }
+                    close = true;
+                }
+                if ui.button("Renunță").clicked() {
+                    close = true;
+                }
+            });
+        });
+        if close || modal.should_close() {
+            self.confirm_delete = None;
+        }
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        if self.confirm_delete.is_some() {
+            // Esc closes the dialog instead of going back.
+            return;
+        }
         if ctx.input_mut(|i| {
             i.consume_shortcut(&egui::KeyboardShortcut::new(
                 egui::Modifiers::COMMAND,
