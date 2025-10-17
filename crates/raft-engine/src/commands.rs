@@ -73,6 +73,17 @@ impl std::fmt::Debug for CommandSpec {
     }
 }
 
+fn has_book(s: &Session) -> Result<(), String> {
+    match opt_book(s) {
+        true => Ok(()),
+        false => Err("no book selected".into()),
+    }
+}
+
+fn opt_book(s: &Session) -> bool {
+    s.current_book().is_some()
+}
+
 fn always(_: &Session) -> Result<(), String> {
     Ok(())
 }
@@ -263,6 +274,18 @@ static REGISTRY: &[CommandSpec] = &[
             "Deschide în aplicația externă",
             open_external,
         )
+    },
+    CommandSpec {
+        params: r#"{"id": string?} (default: current book)"#,
+        enabled: has_book,
+        record: false,
+        ..spec("book.show_in_folder", "Arată în dosar", show_in_folder)
+    },
+    CommandSpec {
+        params: r#"{"id": string?, "confirm": true} — moves the file to the trash; not undoable"#,
+        enabled: has_book,
+        record: false,
+        ..spec("book.delete", "Șterge cartea", book_delete)
     },
     CommandSpec {
         params: r#"{"page": int}"#,
@@ -767,6 +790,35 @@ fn book_review(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         s.state.overrides.remove(&id);
     }
     Ok(json!({ "reviewed": on }))
+}
+
+fn show_in_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    let book = s
+        .book(&id)
+        .cloned()
+        .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
+    s.backend.show_in_folder(&book).map_err(EngineError::Backend)?;
+    Ok(Value::Null)
+}
+
+fn book_delete(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    if opt_bool(p, "confirm")? != Some(true) {
+        return Err(bad(
+            "deleting moves the file to the trash; pass `confirm: true`",
+        ));
+    }
+    let book = s
+        .book(&id)
+        .cloned()
+        .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
+    s.backend.remove_book(&book).map_err(EngineError::Backend)?;
+    if s.current_book().is_some_and(|b| b.id == id) {
+        s.state.route = Route::Library;
+    }
+    s.forget_book(&id);
+    Ok(json!({ "removed": id, "title": book.display_title() }))
 }
 
 /// Most blocks a text book may report.
