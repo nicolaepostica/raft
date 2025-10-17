@@ -51,6 +51,15 @@ pub trait Backend: Send {
     fn delete_override(&self, _book_id: &str, _field: Field) -> Result<(), String> {
         Err("saving corrections is not available here".into())
     }
+    /// Shows the book's file in the system's file manager.
+    fn show_in_folder(&self, _book: &Book) -> Result<(), String> {
+        Err("showing files is not available here".into())
+    }
+    /// Moves the book's file to the trash and records the removal, so the book
+    /// stays hidden until the catalog is rebuilt without it.
+    fn remove_book(&self, _book: &Book) -> Result<(), String> {
+        Err("removing books is not available here".into())
+    }
 }
 
 /// Backend that does nothing; used in tests and the web build.
@@ -163,6 +172,21 @@ impl Session {
 
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+
+    /// Drops a book from the session (after its file was removed).
+    pub(crate) fn forget_book(&mut self, id: &str) {
+        self.base.books.retain(|b| b.id != id);
+        self.catalog.books.retain(|b| b.id != id);
+        self.positions = self
+            .catalog
+            .books
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.id.clone(), i))
+            .collect();
+        self.index = Index::new(&self.catalog);
+        self.refresh();
     }
 
     /// The book as in the catalog, without corrections.
