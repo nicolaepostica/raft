@@ -44,6 +44,29 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             {
                 app.act("view.edit", json!({ "id": book.id }));
             }
+            ui.add_space(12.0);
+            if crate::icon_button(
+                ui,
+                "🗑",
+                "Șterge cartea",
+                "Șterge cartea: fișierul merge în coșul de gunoi",
+                true,
+            )
+            .clicked()
+            {
+                app.confirm_delete = Some(book.id.clone());
+            }
+            if crate::icon_button(
+                ui,
+                "📂",
+                "Arată în dosar",
+                "Arată fișierul în managerul de fișiere",
+                true,
+            )
+            .clicked()
+            {
+                app.act("book.show_in_folder", json!({ "id": book.id }));
+            }
         });
     });
     // Saving leaves the form; do not draw it again this frame from the old book.
@@ -70,6 +93,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         .clicked()
                     {
                         app.act("book.open_external", json!({ "id": book.id }));
+                    }
+                    if ui.button("Arată în dosar").clicked() {
+                        app.act("book.show_in_folder", json!({ "id": book.id }));
                     }
                 }
             });
