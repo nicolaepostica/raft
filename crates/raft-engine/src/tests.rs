@@ -344,10 +344,16 @@ fn deleting_a_book_needs_confirmation_and_forgets_it() {
     s.run("book.show_in_folder", &json!({})).unwrap();
     assert_eq!(*rec.shown.lock().unwrap(), vec!["a"]);
     assert!(s.run("book.delete", &json!({"id": "a"})).is_err());
-    assert!(s.run("book.delete", &json!({"id": "a", "confirm": false})).is_err());
+    assert!(
+        s.run("book.delete", &json!({"id": "a", "confirm": false}))
+            .is_err()
+    );
     assert!(s.book("a").is_some());
     // A failed trash keeps the book.
-    assert!(s.run("book.delete", &json!({"id": "b", "confirm": true})).is_err());
+    assert!(
+        s.run("book.delete", &json!({"id": "b", "confirm": true}))
+            .is_err()
+    );
     assert!(s.book("b").is_some());
     s.run("book.delete", &json!({"confirm": true})).unwrap();
     assert_eq!(*rec.removed.lock().unwrap(), vec!["a"]);
@@ -358,7 +364,10 @@ fn deleting_a_book_needs_confirmation_and_forgets_it() {
     // Undo does not bring it back.
     let _ = s.run("edit.undo", &Value::Null);
     assert!(s.book("a").is_none());
-    assert!(s.run("book.delete", &json!({"id": "a", "confirm": true})).is_err());
+    assert!(
+        s.run("book.delete", &json!({"id": "a", "confirm": true}))
+            .is_err()
+    );
 }
 
 #[test]
