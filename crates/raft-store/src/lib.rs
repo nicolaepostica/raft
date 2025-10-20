@@ -372,6 +372,19 @@ mod tests {
     }
 
     #[test]
+    fn removed_books_round_trip() {
+        let db = UserDb::in_memory().unwrap();
+        db.save_removed("a", "x/a.pdf", 1).unwrap();
+        db.save_removed("a", "x/a.pdf", 2).unwrap();
+        db.save_removed("b", "b.pdf", 3).unwrap();
+        let mut ids = db.load_removed().unwrap();
+        ids.sort();
+        assert_eq!(ids, vec!["a", "b"]);
+        db.delete_removed("a").unwrap();
+        assert_eq!(db.load_removed().unwrap(), vec!["b"]);
+    }
+
+    #[test]
     fn overrides_round_trip_and_skip_unknown_fields() {
         let db = UserDb::in_memory().unwrap();
         let o = Override {
