@@ -148,7 +148,9 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
 fn main() -> Result<()> {
     let opts = parse_args()?;
     let backend = native::NativeBackend::open(&opts.library, &opts.data)?;
-    let catalog = backend.load_catalog()?;
+    let mut catalog = backend.load_catalog()?;
+    let removed = backend.load_removed()?;
+    catalog.books.retain(|b| !removed.contains(&b.id));
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
     let files = native::NativeFiles::new(&opts.library);
