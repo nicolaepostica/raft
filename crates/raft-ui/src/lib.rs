@@ -129,7 +129,7 @@ impl RaftUi {
             return;
         };
         let mut close = false;
-        let modal = egui::Modal::new(egui::Id::new("confirm-delete")).show(ctx, |ui| {
+        let modal = egui::Modal::new(egui::Id::unique("confirm-delete")).show(ctx, |ui| {
             ui.set_max_width(460.0);
             ui.heading("Ștergi cartea?");
             ui.add_space(6.0);
