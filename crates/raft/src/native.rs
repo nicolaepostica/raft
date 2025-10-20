@@ -46,6 +46,10 @@ impl NativeBackend {
     pub fn load_overrides(&self) -> Result<Vec<Override>> {
         Ok(self.user.load_overrides()?)
     }
+
+    pub fn load_removed(&self) -> Result<std::collections::HashSet<BookId>> {
+        Ok(self.user.load_removed()?.into_iter().collect())
+    }
 }
 
 /// Joins a catalog path to the library root, refusing paths that escape it.
