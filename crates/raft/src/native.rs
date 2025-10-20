@@ -18,6 +18,8 @@ pub struct NativeBackend {
     library: PathBuf,
     catalog: CatalogDb,
     user: UserDb,
+    /// Custom covers, next to `raft.db`.
+    covers: PathBuf,
 }
 
 impl NativeBackend {
@@ -32,6 +34,7 @@ impl NativeBackend {
             library: library.to_owned(),
             catalog,
             user,
+            covers: covers_dir(data),
         })
     }
 
@@ -147,6 +150,29 @@ impl Backend for NativeBackend {
         Ok(())
     }
 
+    fn set_cover(&self, book: &Book, source: &CoverSource) -> Result<(), String> {
+        let target = custom_cover(&self.covers, &book.id).ok_or("the book id is not valid")?;
+        let bytes = match source {
+            CoverSource::Catalog => {
+                return match std::fs::remove_file(&target) {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        Err("the book has no custom cover".into())
+                    }
+                    Err(e) => Err(e.to_string()),
+                };
+            }
+            CoverSource::File(path) => read_capped(Path::new(path), MAX_COVER_INPUT)?,
+            CoverSource::Page(page) => {
+                let file = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+                raft_render::render_page(&file, book.format, *page, COVER_W * 2)
+                    .map_err(|e| e.to_string())?
+                    .0
+            }
+        };
+        save_cover(&bytes, &target)
+    }
+
     fn save_override(&self, o: &Override) -> Result<(), String> {
         self.user.save_override(o).map_err(|e| e.to_string())
     }
@@ -162,6 +188,51 @@ impl Backend for NativeBackend {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
     }
+}
+
+/// Largest image accepted as a cover source, in bytes.
+const MAX_COVER_INPUT: usize = 32 * 1024 * 1024;
+/// Custom covers are scaled down to fit this box.
+const COVER_W: u32 = 600;
+const COVER_H: u32 = 900;
+
+/// The folder of custom covers for the database at `data`.
+pub fn covers_dir(data: &Path) -> PathBuf {
+    data.parent().unwrap_or(Path::new(".")).join("covers")
+}
+
+/// `<dir>/<id>.png`, refusing ids that are not plain names.
+pub fn custom_cover(dir: &Path, id: &str) -> Option<PathBuf> {
+    let plain = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric());
+    plain.then(|| dir.join(format!("{id}.png")))
+}
+
+/// Decodes an image (with limits), scales it down to the cover box and writes
+/// it as PNG, atomically.
+pub fn save_cover(bytes: &[u8], target: &Path) -> Result<(), String> {
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(12_000);
+    limits.max_image_height = Some(12_000);
+    limits.max_alloc = Some(512 * 1024 * 1024);
+    reader.limits(limits);
+    let img = reader
+        .decode()
+        .map_err(|e| format!("not an image this app can read: {e}"))?;
+    let img = if img.width() > COVER_W || img.height() > COVER_H {
+        img.resize(COVER_W, COVER_H, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+    let dir = target.parent().ok_or("bad cover path")?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let tmp = target.with_extension("png.tmp");
+    img.to_rgba8()
+        .save_with_format(&tmp, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, target).map_err(|e| e.to_string())
 }
 
 /// A command with no input and no output (it must not touch the terminal).
@@ -213,14 +284,16 @@ struct Texts {
 
 pub struct NativeFiles {
     library: PathBuf,
+    covers: PathBuf,
     pages: Arc<Mutex<Pages>>,
     texts: Arc<Mutex<Texts>>,
 }
 
 impl NativeFiles {
-    pub fn new(library: &Path) -> Self {
+    pub fn new(library: &Path, data: &Path) -> Self {
         Self {
             library: library.to_owned(),
+            covers: covers_dir(data),
             pages: Arc::default(),
             texts: Arc::default(),
         }
@@ -272,12 +345,45 @@ impl Files for NativeFiles {
     }
 
     fn cover(&self, book: &Book) -> Option<Vec<u8>> {
-        let path = resolve(&self.library, book.cover.as_deref()?)?;
+        let custom = custom_cover(&self.covers, &book.id).filter(|p| p.is_file());
+        let path = match custom {
+            Some(p) => p,
+            None => resolve(&self.library, book.cover.as_deref()?)?,
+        };
         let meta = std::fs::metadata(&path).ok()?;
         if meta.len() > MAX_COVER_BYTES {
             return None;
         }
         std::fs::read(path).ok()
+    }
+
+    fn has_custom_cover(&self, book: &Book) -> bool {
+        custom_cover(&self.covers, &book.id).is_some_and(|p| p.is_file())
+    }
+
+    fn pick_image(&self) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("raft-pick".into())
+            .spawn(move || {
+                let out = std::process::Command::new("zenity")
+                    .args([
+                        "--file-selection",
+                        "--title=Alege coperta",
+                        "--file-filter=Imagini | *.png *.jpg *.jpeg *.webp *.PNG *.JPG *.JPEG *.WEBP",
+                    ])
+                    .stdin(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .output();
+                let path = out
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+                    .filter(|p| !p.is_empty());
+                let _ = tx.send(path);
+            })
+            .ok()?;
+        Some(rx)
     }
 
     fn page(&self, book: &Book, page: u32, width: u32) -> Option<Result<Vec<u8>, String>> {
@@ -332,6 +438,23 @@ fn read_capped(path: &Path, max: usize) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_covers_are_scaled_and_ids_checked() {
+        let dir = std::env::temp_dir().join(format!("raft-cover-test-{}", std::process::id()));
+        assert_eq!(custom_cover(&dir, "../x"), None);
+        assert_eq!(custom_cover(&dir, ""), None);
+        let target = custom_cover(&dir, "abc123").unwrap();
+        let big = image::RgbaImage::from_pixel(1200, 1200, image::Rgba([200, 10, 10, 255]));
+        let mut png = Vec::new();
+        big.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        save_cover(&png, &target).unwrap();
+        let saved = image::open(&target).unwrap();
+        assert_eq!((saved.width(), saved.height()), (600, 600));
+        assert!(save_cover(b"not an image", &target).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn file_uris_are_encoded() {
