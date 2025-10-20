@@ -270,6 +270,66 @@ fn year_slider_drags_the_nearest_handle() {
     assert_eq!(h.state().session.result_count(), 2);
 }
 
+struct Trash;
+
+impl raft_engine::Backend for Trash {
+    fn content_search(&self, _: &str, _: usize) -> Result<Vec<String>, String> {
+        Ok(vec![])
+    }
+    fn save_progress(&self, _: &raft_doc::Progress) -> Result<(), String> {
+        Ok(())
+    }
+    fn delete_progress(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn open_external(&self, _: &Book) -> Result<(), String> {
+        Ok(())
+    }
+    fn now(&self) -> i64 {
+        0
+    }
+    fn remove_book(&self, _: &Book) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[test]
+fn deleting_a_book_asks_first() {
+    let catalog = app().session.catalog().clone();
+    let ui = RaftUi::new(
+        Session::new(catalog, vec![], Box::new(Trash)),
+        Box::new(NoFiles),
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Șterge cartea").click();
+    h.run();
+    h.get_by_label("Ștergi cartea?");
+    // Esc closes the dialog and does not go back.
+    h.key_press(egui::Key::Escape);
+    h.run();
+    h.run();
+    assert!(h.query_by_label("Ștergi cartea?").is_none());
+    assert_eq!(h.state().session.route(), &Route::Book { id: "a".into() });
+    h.get_by_label("Șterge cartea").click();
+    h.run();
+    h.get_by_label("Renunță").click();
+    h.run();
+    assert!(h.state().session.book("a").is_some());
+    h.get_by_label("Șterge cartea").click();
+    h.run();
+    h.get_by_label("Mută în coș").click();
+    h.run();
+    assert!(h.state().session.book("a").is_none());
+    assert_eq!(h.state().session.route(), &Route::Library);
+    h.get_by_label("1 din 1 cărți");
+}
+
 #[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
