@@ -5,7 +5,7 @@ use raft_doc::{Format, Mark, Progress, Route, Sort};
 use serde_json::{Value, json};
 
 use crate::params::{opt_bool, opt_i64, opt_str, str};
-use crate::{EngineError, Session};
+use crate::{CoverSource, EngineError, Session};
 
 /// Keyboard shortcut; `key` is an egui key name (`"Z"`, `"ArrowRight"`, `"PageDown"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -273,6 +273,11 @@ static REGISTRY: &[CommandSpec] = &[
         params: r#"{"id": string?, "confirm": true} — moves the file to the trash; not undoable"#,
         record: false,
         ..spec("book.delete", "Șterge cartea", book_delete)
+    },
+    CommandSpec {
+        params: r#"{"id": string?, "path": string} | {"id": string?, "page": int} | {"id": string?, "catalog": true} — one source"#,
+        record: false,
+        ..spec("book.cover.set", "Schimbă coperta", cover_set)
     },
     CommandSpec {
         params: r#"{"page": int}"#,
@@ -789,6 +794,38 @@ fn show_in_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         .show_in_folder(&book)
         .map_err(EngineError::Backend)?;
     Ok(Value::Null)
+}
+
+fn cover_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    let book = s
+        .book(&id)
+        .cloned()
+        .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
+    let path = opt_str(p, "path")?.map(str::trim).filter(|p| !p.is_empty());
+    let page = opt_i64(p, "page")?;
+    let catalog = opt_bool(p, "catalog")? == Some(true);
+    let source = match (path, page, catalog) {
+        (Some(path), None, false) => CoverSource::File(path.to_owned()),
+        (None, Some(n), false) => {
+            if !book.format.is_paged() {
+                return Err(bad("only PDF and DjVu books have pages to take a cover from"));
+            }
+            let max = book.pages.map_or(100_000, i64::from);
+            let n = u32::try_from(n)
+                .ok()
+                .filter(|n| *n >= 1 && i64::from(*n) <= max)
+                .ok_or_else(|| bad(format!("`page` must be between 1 and {max}")))?;
+            CoverSource::Page(n)
+        }
+        (None, None, true) => CoverSource::Catalog,
+        _ => return Err(bad("give exactly one of `path`, `page` or `catalog: true`")),
+    };
+    s.backend
+        .set_cover(&book, &source)
+        .map_err(EngineError::Backend)?;
+    s.bump_cover(&id);
+    Ok(json!({ "cover_rev": s.cover_rev(&id) }))
 }
 
 fn book_delete(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
