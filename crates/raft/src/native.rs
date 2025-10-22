@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use raft_doc::edits::{Field, Override};
 use raft_doc::{Book, BookId, Catalog, Progress};
-use raft_engine::Backend;
+use raft_engine::{Backend, CoverSource};
 use raft_store::{CatalogDb, UserDb};
 use raft_text::TextBook;
 use raft_ui::Files;
