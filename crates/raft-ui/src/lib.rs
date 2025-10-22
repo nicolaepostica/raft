@@ -28,6 +28,15 @@ pub trait Files {
     fn page(&self, book: &Book, page: u32, width_px: u32) -> Option<Result<Vec<u8>, String>>;
     /// Asks for an EPUB/FB2 book parsed as text; returns it once ready (non-blocking).
     fn text(&self, book: &Book) -> Option<Result<Arc<TextBook>, String>>;
+    /// Whether the book has a cover chosen by the user.
+    fn has_custom_cover(&self, _book: &Book) -> bool {
+        false
+    }
+    /// Opens a file chooser for an image; the path (or `None` if cancelled)
+    /// arrives on the channel. `None` when choosing files is not possible.
+    fn pick_image(&self) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        None
+    }
 }
 
 /// Files host that has nothing (tests, web).
@@ -60,6 +69,8 @@ pub struct RaftUi {
     focus_search: bool,
     /// The book whose deletion waits for confirmation.
     confirm_delete: Option<BookId>,
+    /// A cover file chooser that is open, for this book.
+    picking: Option<(BookId, std::sync::mpsc::Receiver<Option<String>>)>,
 }
 
 impl RaftUi {
@@ -76,6 +87,7 @@ impl RaftUi {
             search,
             focus_search: false,
             confirm_delete: None,
+            picking: None,
         }
     }
 
@@ -117,6 +129,25 @@ impl RaftUi {
             }
         }
         self.delete_dialog(ui.ctx());
+        self.poll_picker(ui.ctx());
+    }
+
+    /// Applies the image chosen in the cover file chooser, once it arrives.
+    fn poll_picker(&mut self, ctx: &egui::Context) {
+        let Some((id, rx)) = &self.picking else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Some(path)) => {
+                let id = id.clone();
+                self.picking = None;
+                self.act("book.cover.set", json!({ "id": id, "path": path }));
+            }
+            Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => self.picking = None,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(std::time::Duration::from_millis(200));
+            }
+        }
     }
 
     /// Asks before a book's file goes to the trash.
@@ -245,12 +276,7 @@ impl RaftUi {
             }
         });
     }
-
-    fn open_book_button(&mut self, ui: &mut egui::Ui, book: &Book) {
-        if ui.button("Citește").clicked() {
-            self.act("book.read", json!({ "id": book.id }));
-        }
-    }
+}
 }
 
 /// A large icon button with a hover text; `name` is its accessible label.
