@@ -33,6 +33,17 @@ pub enum EngineError {
     Panic(String),
 }
 
+/// Where a new cover comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoverSource {
+    /// An image file on disk (PNG, JPEG, WebP).
+    File(String),
+    /// A page of the book (paged formats), 1-based.
+    Page(u32),
+    /// Drop the custom cover and use the catalog's again.
+    Catalog,
+}
+
 /// Platform services the engine needs; the native app implements them.
 pub trait Backend: Send {
     /// Full-text search in book content; returns book ids, best first.
@@ -59,6 +70,10 @@ pub trait Backend: Send {
     /// stays hidden until the catalog is rebuilt without it.
     fn remove_book(&self, _book: &Book) -> Result<(), String> {
         Err("removing books is not available here".into())
+    }
+    /// Stores a custom cover for the book (kept apart from the catalog's covers).
+    fn set_cover(&self, _book: &Book, _source: &CoverSource) -> Result<(), String> {
+        Err("changing covers is not available here".into())
     }
 }
 
@@ -119,6 +134,8 @@ pub struct Session {
     content: (String, Vec<BookId>),
     /// Last error or notice for the status bar.
     pub status: Option<String>,
+    /// Bumped each time a book's cover changes, so views reload it.
+    cover_revs: BTreeMap<BookId, u32>,
 }
 
 impl Session {
@@ -149,6 +166,7 @@ impl Session {
             facets: Facets::default(),
             content: (String::new(), Vec::new()),
             status: None,
+            cover_revs: BTreeMap::new(),
         };
         s.refresh();
         s
@@ -172,6 +190,15 @@ impl Session {
 
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+
+    /// Changes each time the book's cover is replaced (0 = never in this session).
+    pub fn cover_rev(&self, id: &str) -> u32 {
+        self.cover_revs.get(id).copied().unwrap_or(0)
+    }
+
+    pub(crate) fn bump_cover(&mut self, id: &str) {
+        *self.cover_revs.entry(id.to_owned()).or_default() += 1;
     }
 
     /// Drops a book from the session (after its file was removed).
