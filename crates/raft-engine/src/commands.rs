@@ -809,7 +809,9 @@ fn cover_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         (Some(path), None, false) => CoverSource::File(path.to_owned()),
         (None, Some(n), false) => {
             if !book.format.is_paged() {
-                return Err(bad("only PDF and DjVu books have pages to take a cover from"));
+                return Err(bad(
+                    "only PDF and DjVu books have pages to take a cover from",
+                ));
             }
             let max = book.pages.map_or(100_000, i64::from);
             let n = u32::try_from(n)
