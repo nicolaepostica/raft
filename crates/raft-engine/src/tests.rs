@@ -19,6 +19,7 @@ struct Recorder {
     /// Ids passed to `remove_book` / `show_in_folder`.
     removed: Arc<Mutex<Vec<String>>>,
     shown: Arc<Mutex<Vec<String>>>,
+    covers: Arc<Mutex<Vec<(String, crate::CoverSource)>>>,
 }
 
 impl Backend for Recorder {
@@ -74,6 +75,13 @@ impl Backend for Recorder {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(b.id.clone());
+        Ok(())
+    }
+    fn set_cover(&self, b: &Book, source: &crate::CoverSource) -> Result<(), String> {
+        self.covers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((b.id.clone(), source.clone()));
         Ok(())
     }
     fn show_in_folder(&self, b: &Book) -> Result<(), String> {
@@ -368,6 +376,38 @@ fn deleting_a_book_needs_confirmation_and_forgets_it() {
         s.run("book.delete", &json!({"id": "a", "confirm": true}))
             .is_err()
     );
+}
+
+#[test]
+fn covers_change_from_one_source_and_bump_the_revision() {
+    use crate::CoverSource;
+    let (mut s, rec) = session();
+    assert_eq!(s.cover_rev("a"), 0);
+    s.run("book.cover.set", &json!({"id": "a", "page": 3})).unwrap();
+    s.run("book.cover.set", &json!({"id": "b", "path": " /tmp/c.png "}))
+        .unwrap();
+    s.run("book.cover.set", &json!({"id": "a", "catalog": true}))
+        .unwrap();
+    assert_eq!(s.cover_rev("a"), 2);
+    assert_eq!(
+        *rec.covers.lock().unwrap(),
+        vec![
+            ("a".into(), CoverSource::Page(3)),
+            ("b".into(), CoverSource::File("/tmp/c.png".into())),
+            ("a".into(), CoverSource::Catalog),
+        ]
+    );
+    for bad in [
+        json!({"id": "a"}),
+        json!({"id": "a", "page": 0}),
+        json!({"id": "a", "page": 11}),
+        json!({"id": "b", "page": 1}),
+        json!({"id": "a", "page": 1, "path": "/x.png"}),
+        json!({"id": "a", "path": "  "}),
+    ] {
+        assert!(s.run("book.cover.set", &bad).is_err(), "{bad}");
+    }
+    assert_eq!(s.cover_rev("a"), 2);
 }
 
 #[test]
