@@ -277,7 +277,6 @@ impl RaftUi {
         });
     }
 }
-}
 
 /// A large icon button with a hover text; `name` is its accessible label.
 pub(crate) fn icon_button(
