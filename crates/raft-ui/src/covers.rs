@@ -20,25 +20,28 @@ pub enum Cover {
 
 #[derive(Default)]
 pub struct Covers {
-    map: HashMap<String, Cover>,
+    /// Book id → (cover revision, texture).
+    map: HashMap<String, (u32, Cover)>,
     frame: u64,
     decoded_this_frame: usize,
 }
 
 impl Covers {
     /// The cover texture for `book`, decoding it if this frame's budget allows.
+    /// A new `rev` (the session's cover revision) reloads it.
     pub fn get(
         &mut self,
         ctx: &egui::Context,
         files: &dyn Files,
         book: &Book,
+        rev: u32,
     ) -> Option<egui::TextureHandle> {
         let frame = ctx.cumulative_frame_nr();
         if frame != self.frame {
             self.frame = frame;
             self.decoded_this_frame = 0;
         }
-        if let Some(c) = self.map.get(&book.id) {
+        if let Some((_, c)) = self.map.get(&book.id).filter(|(r, _)| *r == rev) {
             return match c {
                 Cover::Ready(t) => Some(t.clone()),
                 Cover::Missing => None,
@@ -63,7 +66,7 @@ impl Covers {
             Cover::Ready(t) => Some(t.clone()),
             Cover::Missing => None,
         };
-        self.map.insert(book.id.clone(), cover);
+        self.map.insert(book.id.clone(), (rev, cover));
         tex
     }
 }
