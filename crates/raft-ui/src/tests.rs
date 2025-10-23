@@ -331,6 +331,39 @@ fn deleting_a_book_asks_first() {
 }
 
 #[test]
+fn book_actions_are_icons_under_the_cover_in_both_modes() {
+    let mut h = harness();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    for name in [
+        "Citește",
+        "Deschide în aplicația externă",
+        "Arată în dosar",
+        "Copertă",
+        "Șterge cartea",
+    ] {
+        h.get_by_label(name);
+    }
+    h.get_by_label("Copertă").click();
+    h.run();
+    h.get_by_label("Prima pagină a cărții");
+    h.get_by_label("Alege o imagine…").click();
+    h.run();
+    // NoFiles cannot choose files: the status bar says so.
+    h.get_by_label("alegerea fișierelor nu e disponibilă aici");
+    h.state_mut()
+        .run("view.edit", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Arată în dosar");
+    h.get_by_label("Citește").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Reader { id: "a".into() });
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
