@@ -153,7 +153,7 @@ fn main() -> Result<()> {
     catalog.books.retain(|b| !removed.contains(&b.id));
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
-    let files = native::NativeFiles::new(&opts.library);
+    let files = native::NativeFiles::new(&opts.library, &opts.data);
     let session = Session::new(catalog, progress, Box::new(backend)).with_overrides(overrides);
     let ui = RaftUi::new(session, Box::new(files));
 
