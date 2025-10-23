@@ -383,9 +383,13 @@ fn covers_change_from_one_source_and_bump_the_revision() {
     use crate::CoverSource;
     let (mut s, rec) = session();
     assert_eq!(s.cover_rev("a"), 0);
-    s.run("book.cover.set", &json!({"id": "a", "page": 3})).unwrap();
-    s.run("book.cover.set", &json!({"id": "b", "path": " /tmp/c.png "}))
+    s.run("book.cover.set", &json!({"id": "a", "page": 3}))
         .unwrap();
+    s.run(
+        "book.cover.set",
+        &json!({"id": "b", "path": " /tmp/c.png "}),
+    )
+    .unwrap();
     s.run("book.cover.set", &json!({"id": "a", "catalog": true}))
         .unwrap();
     assert_eq!(s.cover_rev("a"), 2);
