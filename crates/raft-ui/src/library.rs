@@ -359,7 +359,8 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     let visuals = ui.visuals().clone();
     let cover_rect = egui::Rect::from_min_size(rect.min, egui::vec2(CARD_W, COVER_H));
     let painter = ui.painter_at(rect);
-    let tex = app.covers.get(ui.ctx(), app.files.as_ref(), book);
+    let rev = app.session.cover_rev(&book.id);
+    let tex = app.covers.get(ui.ctx(), app.files.as_ref(), book, rev);
     match tex {
         Some(t) => {
             let size = t.size_vec2();
