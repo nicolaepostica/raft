@@ -111,9 +111,14 @@ fn drop_cover(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book, rect: 
             egui::Color32::WHITE,
         );
     }
-    let dropped = ui.input(|i| i.raw.dropped_files.iter().find_map(|f| f.path.clone()));
+    let dropped = ui.input(|i| {
+        i.raw
+            .dropped_files
+            .iter()
+            .map(|f| f.path().to_string_lossy().into_owned())
+            .find(|p| !p.is_empty())
+    });
     if let Some(path) = dropped {
-        let path = path.to_string_lossy().into_owned();
         app.act("book.cover.set", json!({ "id": book.id, "path": path }));
     }
 }
