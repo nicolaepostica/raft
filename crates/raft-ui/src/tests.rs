@@ -383,7 +383,10 @@ fn edit_icon_turns_into_cancel_then_save_and_cancel() {
     h.run();
     let s = &h.state().session;
     assert_eq!(s.route(), &Route::Book { id: "a".into() });
-    assert_eq!(s.book("a").map(|b| b.title.as_str()), Some("Rust in Action"));
+    assert_eq!(
+        s.book("a").map(|b| b.title.as_str()),
+        Some("Rust in Action")
+    );
     assert!(h.state().edit.is_none());
     h.get_by_label("Corectează metadatele");
 }
