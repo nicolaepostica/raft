@@ -364,6 +364,31 @@ fn book_actions_are_icons_under_the_cover_in_both_modes() {
 }
 
 #[test]
+fn edit_icon_turns_into_cancel_then_save_and_cancel() {
+    let mut h = harness();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Corectează metadatele").click();
+    h.run();
+    assert!(h.query_by_label("Salvează").is_none());
+    assert!(h.query_by_label("Corectează metadatele").is_none());
+    h.get_by_label("Titlu").click();
+    h.run();
+    h.get_by_label("Titlu").type_text("?");
+    h.run();
+    h.get_by_label("Salvează");
+    h.get_by_label("Renunță").click();
+    h.run();
+    let s = &h.state().session;
+    assert_eq!(s.route(), &Route::Book { id: "a".into() });
+    assert_eq!(s.book("a").map(|b| b.title.as_str()), Some("Rust in Action"));
+    assert!(h.state().edit.is_none());
+    h.get_by_label("Corectează metadatele");
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
