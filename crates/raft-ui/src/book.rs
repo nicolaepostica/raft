@@ -142,12 +142,12 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             if editing {
                 let changed = crate::edit::has_changes(app, &book);
                 let save = ui.input_mut(|i| i.consume_shortcut(&SAVE));
-                if changed {
-                    if crate::icon_button(ui, "💾", "Salvează", "Salvează (Ctrl+S)", true).clicked()
-                        || save
-                    {
-                        crate::edit::save(app, &book);
-                    }
+                if changed
+                    && (crate::icon_button(ui, "💾", "Salvează", "Salvează (Ctrl+S)", true)
+                        .clicked()
+                        || save)
+                {
+                    crate::edit::save(app, &book);
                 }
                 let hint = if changed {
                     "Renunță la modificări"
