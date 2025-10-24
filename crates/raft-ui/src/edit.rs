@@ -181,6 +181,12 @@ pub fn save(app: &mut RaftUi, book: &Book) -> bool {
     ok
 }
 
+/// Leaves the form without saving; the draft is dropped.
+pub fn cancel(app: &mut RaftUi, book: &Book) {
+    app.edit = None;
+    app.act("view.book", json!({ "id": book.id }));
+}
+
 /// Whether the draft of `book` differs from it.
 pub fn has_changes(app: &RaftUi, book: &Book) -> bool {
     app.edit
@@ -243,10 +249,6 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
                     close = true;
                 }
             }
-        }
-        if ui.button("Renunță").clicked() {
-            app.act("view.book", json!({ "id": book.id }));
-            close = true;
         }
         if !app.session.edited_fields(&book.id).is_empty()
             && ui
