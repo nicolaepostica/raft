@@ -164,7 +164,8 @@ impl Backend for NativeBackend {
             }
             CoverSource::File(path) => read_capped(Path::new(path), MAX_COVER_INPUT)?,
             CoverSource::Page(page) => {
-                let file = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+                let file =
+                    resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
                 raft_render::render_page(&file, book.format, *page, COVER_W * 2)
                     .map_err(|e| e.to_string())?
                     .0
