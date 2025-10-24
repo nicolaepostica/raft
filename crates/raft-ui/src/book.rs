@@ -137,17 +137,26 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         };
         crate::back_button(app, ui, hint);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // One spot: the pencil opens the form, which turns it into the save icon.
+            // One spot: the pencil opens the form and becomes "cancel"; once
+            // something changed, save takes its place and cancel moves next to it.
             if editing {
                 let changed = crate::edit::has_changes(app, &book);
-                let hint = if changed {
-                    "Salvează (Ctrl+S)"
-                } else {
-                    "Salvează: nu ai modificat nimic"
-                };
                 let save = ui.input_mut(|i| i.consume_shortcut(&SAVE));
-                if crate::icon_button(ui, "💾", "Salvează", hint, changed).clicked() || save {
-                    crate::edit::save(app, &book);
+                if changed {
+                    if crate::icon_button(ui, "💾", "Salvează", "Salvează (Ctrl+S)", true)
+                        .clicked()
+                        || save
+                    {
+                        crate::edit::save(app, &book);
+                    }
+                }
+                let hint = if changed {
+                    "Renunță la modificări (Esc)"
+                } else {
+                    "Închide editarea (Esc)"
+                };
+                if crate::icon_button(ui, "✖", "Renunță", hint, true).clicked() {
+                    crate::edit::cancel(app, &book);
                 }
             } else if crate::icon_button(
                 ui,
