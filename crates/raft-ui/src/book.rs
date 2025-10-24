@@ -151,9 +151,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     }
                 }
                 let hint = if changed {
-                    "Renunță la modificări (Esc)"
+                    "Renunță la modificări"
                 } else {
-                    "Închide editarea (Esc)"
+                    "Închide editarea"
                 };
                 if crate::icon_button(ui, "✖", "Renunță", hint, true).clicked() {
                     crate::edit::cancel(app, &book);
