@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Raft
+Comment=Biblioteca ta de cărți: căutare, filtre și cititor
+Exec=raft
+Icon=raft
+Terminal=false
+Categories=Office;Viewer;Education;
+StartupWMClass=raft
