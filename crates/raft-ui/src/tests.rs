@@ -373,7 +373,7 @@ fn edit_icon_turns_into_cancel_then_save_and_cancel() {
     h.get_by_label("Corectează metadatele").click();
     h.run();
     assert!(h.query_by_label("Salvează").is_none());
-    assert!(h.query_by_label("Corectează metadatele").is_none());
+    h.get_by_label("Renunță");
     h.get_by_label("Titlu").click();
     h.run();
     h.get_by_label("Titlu").type_text("?");
@@ -388,7 +388,7 @@ fn edit_icon_turns_into_cancel_then_save_and_cancel() {
         Some("Rust in Action")
     );
     assert!(h.state().edit.is_none());
-    h.get_by_label("Corectează metadatele");
+    assert!(h.query_by_label("Renunță").is_none());
 }
 
 #[test]
