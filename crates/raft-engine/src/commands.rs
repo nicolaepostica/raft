@@ -221,6 +221,13 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("sort.set", "Sortare", sort_set)
     },
     CommandSpec {
+        menu: Some("View/Theme"),
+        shortcut: ctrl_shift("T"),
+        params: r#"{"theme": "light"|"dark"} (default: switch)"#,
+        record: false,
+        ..spec("view.theme", "Temă albă / întunecată", view_theme)
+    },
+    CommandSpec {
         menu: Some("View/Back"),
         shortcut: key("Backspace"),
         also: &[
@@ -450,6 +457,21 @@ fn sort_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         serde_json::from_value(v).map_err(|e| EngineError::BadParams(format!("`sort`: {e}")))?;
     s.state.query.sort = sort;
     Ok(Value::Null)
+}
+
+fn view_theme(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let dark = match opt_str(p, "theme")? {
+        None => !s.dark,
+        Some("dark") => true,
+        Some("light") => false,
+        Some(other) => return Err(bad(format!("unknown theme `{other}` (light or dark)"))),
+    };
+    let name = if dark { "dark" } else { "light" };
+    s.backend
+        .save_setting("theme", name)
+        .map_err(|e| EngineError::Backend(format!("theme not saved: {e}")))?;
+    s.dark = dark;
+    Ok(json!({ "theme": name }))
 }
 
 fn view_library(s: &mut Session, _: &Value) -> Result<Value, EngineError> {
