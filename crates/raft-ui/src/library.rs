@@ -372,6 +372,13 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 egui::Color32::WHITE,
             );
+            // White covers would melt into the white page without an edge.
+            painter.rect_stroke(
+                draw,
+                0.0,
+                visuals.widgets.noninteractive.bg_stroke,
+                egui::StrokeKind::Inside,
+            );
         }
         None => {
             painter.rect_filled(cover_rect, 6.0, visuals.faint_bg_color);
@@ -387,21 +394,10 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     let mut y = cover_rect.top() + 4.0;
     let at = |y: f32| egui::pos2(cover_rect.left() + 4.0, y);
     if book.edited {
-        y += 2.0
-            + badge(
-                &painter,
-                at(y),
-                "corectată",
-                egui::Color32::from_rgb(40, 110, 200),
-            );
+        y += 2.0 + badge(&painter, at(y), "corectată", crate::theme::edited());
     }
     if book.is_incomplete() {
-        badge(
-            &painter,
-            at(y),
-            "incompletă",
-            egui::Color32::from_rgb(190, 90, 20),
-        );
+        badge(&painter, at(y), "incompletă", crate::theme::incomplete());
     }
     if let Some(p) = app.session.progress(&book.id) {
         let bar = egui::Rect::from_min_size(
