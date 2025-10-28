@@ -1,0 +1,30 @@
+# Raft's one theme: the app's egui Visuals and the icon are built from it.
+# Chosen by the agent (no brand given): a library-green accent on white paper,
+# motif = books standing on a wooden shelf ("raft" is Romanian for shelf).
+name = "Raft"
+motif = "books on a wooden shelf"
+font = "Ubuntu Light (egui default font)"
+
+accent = "#1f6f6a"
+accent_press = "#17564f"
+
+bg_light = "#ffffff"
+panel_light = "#f5f3ef"
+fg_light = "#1f2328"
+faint_light = "#e9e6e0"
+
+bg_dark = "#16181b"
+panel_dark = "#1e2125"
+fg_dark = "#e6e4df"
+faint_dark = "#2b2f34"
+
+# Book marks (cover badges, "edited" note).
+edited = "#2a64b8"
+incomplete = "#b3541e"
+
+# Icon only.
+wood = "#9a6236"
+book_1 = "#f3ead7"
+book_2 = "#f2c14e"
+book_3 = "#d65f45"
+book_4 = "#8cc5b0"
