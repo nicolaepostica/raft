@@ -170,10 +170,16 @@ fn main() -> Result<()> {
     catalog.books.retain(|b| !removed.contains(&b.id));
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
+    // RAFT_THEME=light|dark wins over the saved choice for this run.
+    let dark = match std::env::var("RAFT_THEME").as_deref() {
+        Ok("dark") => true,
+        Ok("light") => false,
+        _ => backend.load_dark()?,
+    };
     let files = native::NativeFiles::new(&opts.library, &opts.data);
-    let session = Session::new(catalog, progress, Box::new(backend)).with_overrides(overrides);
-    let mut ui = RaftUi::new(session, Box::new(files));
-    ui.dark = std::env::var("RAFT_THEME").is_ok_and(|t| t == "dark");
+    let session = Session::new(catalog, progress, Box::new(backend)).with_overrides(overrides)
+        .with_dark(dark);
+    let ui = RaftUi::new(session, Box::new(files));
 
     let viewport = egui::ViewportBuilder::default()
         .with_title("Raft")
