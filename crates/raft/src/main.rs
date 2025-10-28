@@ -145,6 +145,23 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
     config
 }
 
+/// The window icon (assets/icon.png, drawn by assets/icon.py).
+fn app_icon() -> egui::IconData {
+    image::load_from_memory_with_format(
+        include_bytes!("../../../assets/icon.png"),
+        image::ImageFormat::Png,
+    )
+    .map(|img| {
+        let img = img.to_rgba8();
+        egui::IconData {
+            width: img.width(),
+            height: img.height(),
+            rgba: img.into_raw(),
+        }
+    })
+    .unwrap_or_default()
+}
+
 fn main() -> Result<()> {
     let opts = parse_args()?;
     let backend = native::NativeBackend::open(&opts.library, &opts.data)?;
@@ -155,11 +172,13 @@ fn main() -> Result<()> {
     let overrides = backend.load_overrides()?;
     let files = native::NativeFiles::new(&opts.library, &opts.data);
     let session = Session::new(catalog, progress, Box::new(backend)).with_overrides(overrides);
-    let ui = RaftUi::new(session, Box::new(files));
+    let mut ui = RaftUi::new(session, Box::new(files));
+    ui.dark = std::env::var("RAFT_THEME").is_ok_and(|t| t == "dark");
 
     let viewport = egui::ViewportBuilder::default()
         .with_title("Raft")
         .with_app_id("raft")
+        .with_icon(app_icon())
         .with_inner_size([1280.0, 860.0])
         .with_min_inner_size([640.0, 420.0]);
     let native_options = eframe::NativeOptions {
