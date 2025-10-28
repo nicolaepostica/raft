@@ -98,7 +98,10 @@ mod tests {
             assert!(value(key).and_then(parse_hex).is_some(), "{key}");
         }
         assert_eq!(value("name"), Some("Raft"));
-        assert_eq!(parse_hex("#1f6f6a"), Some(egui::Color32::from_rgb(31, 111, 106)));
+        assert_eq!(
+            parse_hex("#1f6f6a"),
+            Some(egui::Color32::from_rgb(31, 111, 106))
+        );
         assert_eq!(parse_hex("1f6f6a"), None);
         assert_eq!(parse_hex("#1f6f6"), None);
     }
