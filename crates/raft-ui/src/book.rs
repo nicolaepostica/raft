@@ -185,6 +185,12 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     }
                     None => ui.add_sized([300.0, 420.0], egui::Label::new("fără copertă")),
                 };
+                ui.painter().rect_stroke(
+                    cover.rect,
+                    0.0,
+                    ui.visuals().widgets.noninteractive.bg_stroke,
+                    egui::StrokeKind::Outside,
+                );
                 drop_cover(app, ui, &book, cover.rect);
                 ui.add_space(8.0);
                 actions(app, ui, &book);
@@ -256,7 +262,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                             "Corectată manual: {edited} câmp(uri); restul vin din catalog"
                         ))
                         .small()
-                        .color(egui::Color32::from_rgb(70, 140, 230)),
+                        .color(crate::theme::edited()),
                     );
                 }
                 let missing: Vec<&str> =
