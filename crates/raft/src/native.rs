@@ -50,6 +50,11 @@ impl NativeBackend {
         Ok(self.user.load_overrides()?)
     }
 
+    /// The saved theme: true for dark.
+    pub fn load_dark(&self) -> Result<bool> {
+        Ok(self.user.setting("theme")?.as_deref() == Some("dark"))
+    }
+
     pub fn load_removed(&self) -> Result<std::collections::HashSet<BookId>> {
         Ok(self.user.load_removed()?.into_iter().collect())
     }
@@ -148,6 +153,10 @@ impl Backend for NativeBackend {
             }
         }
         Ok(())
+    }
+
+    fn save_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        self.user.save_setting(key, value).map_err(|e| e.to_string())
     }
 
     fn set_cover(&self, book: &Book, source: &CoverSource) -> Result<(), String> {
