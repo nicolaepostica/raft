@@ -70,9 +70,8 @@ pub struct RaftUi {
     focus_search: bool,
     /// The book whose deletion waits for confirmation.
     confirm_delete: Option<BookId>,
-    /// Dark theme instead of the default light one.
-    pub dark: bool,
-    themed: bool,
+    /// The theme last installed in egui (`Some(dark)`).
+    themed: Option<bool>,
     /// A cover file chooser that is open, for this book.
     picking: Option<(BookId, std::sync::mpsc::Receiver<Option<String>>)>,
 }
@@ -92,8 +91,7 @@ impl RaftUi {
             focus_search: false,
             confirm_delete: None,
             picking: None,
-            dark: false,
-            themed: false,
+            themed: None,
         }
     }
 
@@ -110,9 +108,10 @@ impl RaftUi {
 
     /// Draws one frame.
     pub fn show(&mut self, ui: &mut egui::Ui) {
-        if !self.themed {
-            theme::apply(ui.ctx(), self.dark);
-            self.themed = true;
+        let dark = self.session.dark();
+        if self.themed != Some(dark) {
+            theme::apply(ui.ctx(), dark);
+            self.themed = Some(dark);
         }
         self.shortcuts(ui.ctx());
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
