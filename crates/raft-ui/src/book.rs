@@ -203,7 +203,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 }
                 ui.heading(book.display_title());
                 if !book.authors.is_empty() {
-                    ui.label(egui::RichText::new(book.authors_line()).size(16.0));
+                    ui.label(egui::RichText::new(book.authors_line()).size(18.0));
                 }
                 ui.add_space(8.0);
                 egui::Grid::new("meta")
