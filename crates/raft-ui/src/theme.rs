@@ -30,6 +30,11 @@ pub fn color(key: &str) -> egui::Color32 {
         .unwrap_or(egui::Color32::GRAY)
 }
 
+/// Size of small labels drawn by hand (badges).
+pub fn small_size() -> f32 {
+    SMALL
+}
+
 /// Colour of the "edited by hand" marks.
 pub fn edited() -> egui::Color32 {
     color("edited")
@@ -64,8 +69,28 @@ fn visuals(dark: bool) -> egui::Visuals {
     v
 }
 
-/// Installs the light and dark visuals and picks one.
+/// Text sizes, in points (egui's defaults are 9 / 12.5 / 18, too small to read
+/// comfortably at a distance).
+const SMALL: f32 = 12.5;
+const BODY: f32 = 15.5;
+const HEADING: f32 = 22.0;
+const MONO: f32 = 14.0;
+
+/// Installs the light and dark visuals and the text sizes, and picks a theme.
 pub fn apply(ctx: &egui::Context, dark: bool) {
+    ctx.all_styles_mut(|style| {
+        use egui::{FontFamily, FontId, TextStyle};
+        style.text_styles = [
+            (TextStyle::Small, FontId::new(SMALL, FontFamily::Proportional)),
+            (TextStyle::Body, FontId::new(BODY, FontFamily::Proportional)),
+            (TextStyle::Button, FontId::new(BODY, FontFamily::Proportional)),
+            (TextStyle::Heading, FontId::new(HEADING, FontFamily::Proportional)),
+            (TextStyle::Monospace, FontId::new(MONO, FontFamily::Monospace)),
+        ]
+        .into();
+        style.spacing.interact_size.y = 24.0;
+        style.spacing.button_padding = egui::vec2(8.0, 3.0);
+    });
     ctx.set_visuals_of(egui::Theme::Light, visuals(false));
     ctx.set_visuals_of(egui::Theme::Dark, visuals(true));
     ctx.set_theme(if dark {
