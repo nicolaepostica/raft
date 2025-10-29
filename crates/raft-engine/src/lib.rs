@@ -71,6 +71,10 @@ pub trait Backend: Send {
     fn remove_book(&self, _book: &Book) -> Result<(), String> {
         Err("removing books is not available here".into())
     }
+    /// Saves a preference (`theme` = `light` | `dark`).
+    fn save_setting(&self, _key: &str, _value: &str) -> Result<(), String> {
+        Ok(())
+    }
     /// Stores a custom cover for the book (kept apart from the catalog's covers).
     fn set_cover(&self, _book: &Book, _source: &CoverSource) -> Result<(), String> {
         Err("changing covers is not available here".into())
@@ -136,6 +140,8 @@ pub struct Session {
     pub status: Option<String>,
     /// Bumped each time a book's cover changes, so views reload it.
     cover_revs: BTreeMap<BookId, u32>,
+    /// Dark theme instead of the light one (a preference, not undone).
+    dark: bool,
 }
 
 impl Session {
@@ -167,6 +173,7 @@ impl Session {
             content: (String::new(), Vec::new()),
             status: None,
             cover_revs: BTreeMap::new(),
+            dark: false,
         };
         s.refresh();
         s
@@ -190,6 +197,16 @@ impl Session {
 
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+
+    /// Starts with the saved theme.
+    pub fn with_dark(mut self, dark: bool) -> Self {
+        self.dark = dark;
+        self
+    }
+
+    pub fn dark(&self) -> bool {
+        self.dark
     }
 
     /// Changes each time the book's cover is replaced (0 = never in this session).
@@ -495,6 +512,7 @@ impl Session {
             "can_undo": self.can_undo(),
             "can_redo": self.can_redo(),
             "status": self.status,
+            "theme": if self.dark { "dark" } else { "light" },
         })
     }
 }
