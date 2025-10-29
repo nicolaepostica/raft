@@ -415,6 +415,19 @@ fn covers_change_from_one_source_and_bump_the_revision() {
 }
 
 #[test]
+fn theme_switches_and_is_not_undone() {
+    let (mut s, _) = session();
+    assert!(!s.dark());
+    s.run("view.theme", &Value::Null).unwrap();
+    assert!(s.dark());
+    assert!(s.run("edit.undo", &Value::Null).is_err());
+    s.run("view.theme", &json!({"theme": "light"})).unwrap();
+    assert!(!s.dark());
+    assert!(s.run("view.theme", &json!({"theme": "blue"})).is_err());
+    assert_eq!(s.snapshot()["theme"], "light");
+}
+
+#[test]
 fn edits_are_validated_and_reset() {
     let (mut s, _) = session();
     let bad = [
