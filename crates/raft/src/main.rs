@@ -177,7 +177,8 @@ fn main() -> Result<()> {
         _ => backend.load_dark()?,
     };
     let files = native::NativeFiles::new(&opts.library, &opts.data);
-    let session = Session::new(catalog, progress, Box::new(backend)).with_overrides(overrides)
+    let session = Session::new(catalog, progress, Box::new(backend))
+        .with_overrides(overrides)
         .with_dark(dark);
     let ui = RaftUi::new(session, Box::new(files));
 
