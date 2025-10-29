@@ -156,7 +156,9 @@ impl Backend for NativeBackend {
     }
 
     fn save_setting(&self, key: &str, value: &str) -> Result<(), String> {
-        self.user.save_setting(key, value).map_err(|e| e.to_string())
+        self.user
+            .save_setting(key, value)
+            .map_err(|e| e.to_string())
     }
 
     fn set_cover(&self, book: &Book, source: &CoverSource) -> Result<(), String> {
