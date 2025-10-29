@@ -174,6 +174,10 @@ impl UserDb {
                  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                  PRIMARY KEY (book_id, field)
              );
+             CREATE TABLE IF NOT EXISTS settings(
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS removed(
                  book_id TEXT PRIMARY KEY,
                  path TEXT NOT NULL,
@@ -264,6 +268,25 @@ impl UserDb {
         self.conn.execute(
             "DELETE FROM overrides WHERE book_id = ?1 AND field = ?2",
             params![book_id, field.slug()],
+        )?;
+        Ok(())
+    }
+
+    /// A saved preference (`theme` …), if set.
+    pub fn setting(&self, key: &str) -> Result<Option<String>, StoreError> {
+        use rusqlite::OptionalExtension;
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()?)
+    }
+
+    pub fn save_setting(&self, key: &str, value: &str) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key, value) VALUES (?1, ?2)",
+            [key, value],
         )?;
         Ok(())
     }
@@ -369,6 +392,15 @@ mod tests {
         assert!(all[0].percent.abs() < f32::EPSILON);
         db.delete_progress("a").unwrap();
         assert!(db.load_progress().unwrap().is_empty());
+    }
+
+    #[test]
+    fn settings_round_trip() {
+        let db = UserDb::in_memory().unwrap();
+        assert_eq!(db.setting("theme").unwrap(), None);
+        db.save_setting("theme", "dark").unwrap();
+        db.save_setting("theme", "light").unwrap();
+        assert_eq!(db.setting("theme").unwrap().as_deref(), Some("light"));
     }
 
     #[test]
