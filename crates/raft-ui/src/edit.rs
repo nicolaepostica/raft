@@ -266,7 +266,8 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     }
     ui.add_space(6.0);
     let mut reset = None;
-    let width = ui.available_width().min(640.0);
+    // Room on the right for the scroll bar, which floats over the content.
+    let width = (ui.available_width() - 16.0).clamp(200.0, 640.0);
     let single = |ui: &mut egui::Ui, text: &mut String, lbl: &egui::Response, hint: &str| {
         ui.add(
             egui::TextEdit::singleline(text)
@@ -298,10 +299,12 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     .labelled_by(l.id);
     field_label(app, ui, book, Field::Categories, &mut reset);
     let categories = app.session.catalog().categories.clone();
-    egui::Grid::new("edit-categories")
-        .num_columns(3)
-        .show(ui, |ui| {
-            for (i, c) in categories.iter().enumerate() {
+    // Checkboxes flow in rows as wide as the form, whatever the text size.
+    ui.scope(|ui| {
+        ui.set_max_width(width);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 14.0;
+            for c in &categories {
                 let mut on = draft.categories.contains(&c.slug);
                 if ui.checkbox(&mut on, &c.name).changed() {
                     if on {
@@ -310,11 +313,9 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
                         draft.categories.remove(&c.slug);
                     }
                 }
-                if i % 3 == 2 {
-                    ui.end_row();
-                }
             }
         });
+    });
     if let Some(field) = reset
         && let Some(fresh) = app.session.book(&book.id).map(Draft::from_book)
     {
