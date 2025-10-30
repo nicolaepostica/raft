@@ -21,7 +21,7 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
         size: parts.size.unwrap_or(0),
         pages: parts.pages,
         title: cap(parts.title.unwrap_or_default()),
-        authors: parts.authors,
+        authors: clean_authors(parts.authors),
         year: parts.year,
         language: cap(parts.language.unwrap_or_default()),
         publisher: parts.publisher.map(cap),
@@ -36,6 +36,47 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
         edited: false,
         reviewed: false,
     })
+}
+
+/// Sites that books were downloaded from; never an author.
+const DOWNLOAD_SITES: [&str; 6] = [
+    "it-ebooks",
+    "allitebooks",
+    "alldatasheet",
+    "freebookspot",
+    "ebook3000",
+    "bookzz",
+];
+
+/// Placeholder names that PDF tools write when nobody filled in the author.
+const PLACEHOLDERS: [&str; 6] = [
+    "user",
+    "windows user",
+    "unknown",
+    "admin",
+    "administrator",
+    "owner",
+];
+
+/// Whether an "author" taken from file metadata is really the producing
+/// program, a download site or a placeholder.
+pub fn is_junk_author(name: &str) -> bool {
+    let lower = name.trim().to_lowercase();
+    lower.is_empty()
+        // PDF "Creator" is the program or site that made the file.
+        || lower.starts_with("creator:")
+        || lower.starts_with("producer:")
+        || lower.starts_with("provided by")
+        || lower.starts_with("www.")
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || DOWNLOAD_SITES.iter().any(|s| lower.contains(s))
+        || PLACEHOLDERS.contains(&lower.as_str())
+}
+
+/// Authors without download sites, producing programs and placeholders.
+pub fn clean_authors(authors: Vec<String>) -> Vec<String> {
+    authors.into_iter().filter(|a| !is_junk_author(a)).collect()
 }
 
 /// Loose, already-typed fields of a book record.
@@ -96,4 +137,31 @@ pub fn cap(mut s: String) -> String {
         s.truncate(end);
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn junk_authors_are_dropped() {
+        let authors = [
+            "Creator:         www.it-ebooks.info",
+            "Creator:         LaTeX with hyperref",
+            "Provided By ALLDATASHEET.COM(FREE DATASHEET DOWNLOAD SITE)",
+            "www.allitebooks.com",
+            "Windows User",
+            "Unknown",
+            "Magnus Lie Hetland",
+            "GoalKicker.com",
+            "Сергей Тарасов",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            clean_authors(authors),
+            vec!["Magnus Lie Hetland", "GoalKicker.com", "Сергей Тарасов"]
+        );
+        assert!(!is_junk_author("Userman Smith"));
+    }
 }
