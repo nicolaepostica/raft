@@ -201,14 +201,16 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     crate::edit::form(app, ui, &book);
                     return;
                 }
+                // The details are read, not scanned: larger than the rest of the app.
+                crate::theme::reading_sizes(ui.style_mut());
                 ui.heading(book.display_title());
                 if !book.authors.is_empty() {
-                    ui.label(egui::RichText::new(book.authors_line()).size(18.0));
+                    ui.label(egui::RichText::new(book.authors_line()).size(22.0));
                 }
                 ui.add_space(8.0);
                 egui::Grid::new("meta")
                     .num_columns(2)
-                    .spacing([16.0, 4.0])
+                    .spacing([20.0, 6.0])
                     .show(ui, |ui| {
                         let mut row = |k: &str, v: String| {
                             if !v.is_empty() {
