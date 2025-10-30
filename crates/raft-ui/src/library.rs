@@ -255,7 +255,7 @@ fn marks(
 fn badge(painter: &egui::Painter, pos: egui::Pos2, text: &str, fill: egui::Color32) -> f32 {
     let galley = painter.layout_no_wrap(
         text.to_owned(),
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(crate::theme::small_size()),
         egui::Color32::WHITE,
     );
     let rect = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(8.0, 2.0));
