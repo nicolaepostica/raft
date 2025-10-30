@@ -30,6 +30,21 @@ pub fn color(key: &str) -> egui::Color32 {
         .unwrap_or(egui::Color32::GRAY)
 }
 
+/// Larger text for a page that is read (the book's details).
+pub fn reading_sizes(style: &mut egui::Style) {
+    use egui::{FontFamily, FontId, TextStyle};
+    for (ts, size) in [
+        (TextStyle::Small, 15.5),
+        (TextStyle::Body, 18.5),
+        (TextStyle::Button, 17.0),
+        (TextStyle::Heading, 28.0),
+    ] {
+        style
+            .text_styles
+            .insert(ts, FontId::new(size, FontFamily::Proportional));
+    }
+}
+
 /// Size of small labels drawn by hand (badges).
 pub fn small_size() -> f32 {
     SMALL
