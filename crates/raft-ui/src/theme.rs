@@ -81,11 +81,23 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
     ctx.all_styles_mut(|style| {
         use egui::{FontFamily, FontId, TextStyle};
         style.text_styles = [
-            (TextStyle::Small, FontId::new(SMALL, FontFamily::Proportional)),
+            (
+                TextStyle::Small,
+                FontId::new(SMALL, FontFamily::Proportional),
+            ),
             (TextStyle::Body, FontId::new(BODY, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(BODY, FontFamily::Proportional)),
-            (TextStyle::Heading, FontId::new(HEADING, FontFamily::Proportional)),
-            (TextStyle::Monospace, FontId::new(MONO, FontFamily::Monospace)),
+            (
+                TextStyle::Button,
+                FontId::new(BODY, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Heading,
+                FontId::new(HEADING, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Monospace,
+                FontId::new(MONO, FontFamily::Monospace),
+            ),
         ]
         .into();
         style.spacing.interact_size.y = 24.0;
