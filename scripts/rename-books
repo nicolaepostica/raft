@@ -49,7 +49,7 @@ DOWNLOAD_SITES = re.compile(
     r'|ebook3000\.com|freebookspot\.\w+|foxebook\.net|wowebook\.\w+|searchfloor\.\w+'
     r'|oceanofpdf\.com|ebooksworld\.ir'
     r'|t\.me/(?:javalib|it_boooks|booksforits|booksfine|bookinier)\b'
-    r'|(?:Tlgm:\s*)?@(?:javalib|it_boooks|booksforits|booksfine|bookinier)\b)/?', re.I)
+    r'|(?:Tlgm:\s*)?(?<![\w.])@(?:javalib|it_boooks|booksforits|booksfine|bookinier)\b)/?', re.I)
 
 
 def strip_sites(text):
