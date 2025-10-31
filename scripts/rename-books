@@ -46,7 +46,9 @@ def ocr(path, ext, pages=8):
 # Sites the books were downloaded from: their address is in the footer of every page.
 DOWNLOAD_SITES = re.compile(
     r'(?:https?://)?(?:www\.)?(?:it-ebooks\.(?:info|org|directory)|allitebooks\.(?:com|org|in)'
-    r'|ebook3000\.com|freebookspot\.\w+|foxebook\.net|wowebook\.\w+)/?', re.I)
+    r'|ebook3000\.com|freebookspot\.\w+|foxebook\.net|wowebook\.\w+|searchfloor\.org'
+    r'|oceanofpdf\.com|ebooksworld\.ir'
+    r'|t\.me/(?:javalib|it_boooks|booksforits|booksfine|bookinier)\b)/?', re.I)
 
 
 def strip_sites(text):
