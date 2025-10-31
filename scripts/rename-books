@@ -43,6 +43,17 @@ def ocr(path, ext, pages=8):
     return '\n'.join(l for l in '\n'.join(out).splitlines() if len(l.strip()) > 2)
 
 
+# Sites the books were downloaded from: their address is in the footer of every page.
+DOWNLOAD_SITES = re.compile(
+    r'(?:https?://)?(?:www\.)?(?:it-ebooks\.(?:info|org|directory)|allitebooks\.(?:com|org|in)'
+    r'|ebook3000\.com|freebookspot\.\w+|foxebook\.net|wowebook\.\w+)/?', re.I)
+
+
+def strip_sites(text):
+    """Text without the download sites' addresses."""
+    return DOWNLOAD_SITES.sub(' ', text)
+
+
 def extract(path):
     """Returnează (metadate dict, text din primele pagini)."""
     ext = os.path.splitext(path)[1].lower()
@@ -76,7 +87,7 @@ def extract(path):
         text = run(['djvutxt', '--page=1-10', path], 120)
     if ext in ('.pdf', '.djvu') and len(re.sub(r'\s', '', text)) < 300:
         text = ocr(path, ext) or text   # carte scanată, fără strat de text
-    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'[ \t]+', ' ', strip_sites(text))
     text = '\n'.join(l.strip() for l in text.splitlines() if l.strip())
     return meta, text[:6000]
 
