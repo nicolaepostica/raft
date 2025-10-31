@@ -170,6 +170,14 @@ fn main() -> Result<()> {
     catalog.books.retain(|b| !removed.contains(&b.id));
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
+    // The saved language, else the system's (LANG=ru_RU.UTF-8 → ru), else Romanian.
+    let language = match backend.load_language()? {
+        Some(code) => code,
+        None => std::env::var("LANG")
+            .ok()
+            .and_then(|l| l.get(..2).map(str::to_owned))
+            .unwrap_or_else(|| "ro".to_owned()),
+    };
     // RAFT_THEME=light|dark wins over the saved choice for this run.
     let dark = match std::env::var("RAFT_THEME").as_deref() {
         Ok("dark") => true,
@@ -179,7 +187,8 @@ fn main() -> Result<()> {
     let files = native::NativeFiles::new(&opts.library, &opts.data);
     let session = Session::new(catalog, progress, Box::new(backend))
         .with_overrides(overrides)
-        .with_dark(dark);
+        .with_dark(dark)
+        .with_language(&language);
     let ui = RaftUi::new(session, Box::new(files));
 
     let viewport = egui::ViewportBuilder::default()
