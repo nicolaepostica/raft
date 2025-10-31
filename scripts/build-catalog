@@ -7,6 +7,7 @@ Utilizare:
     build-catalog --refresh-ai       # recalculează metadatele AI pentru toate cărțile
     build-catalog --no-ai            # doar metadate din fișier, fără CLI-ul `claude`
     build-catalog --json             # exportă și DIR/catalog.json
+    build-catalog --clean-only       # doar scoate adresele site-urilor de descărcare din conținut
 
 Scriptul poate fi rulat de oricâte ori: o carte e identificată după md5-ul conținutului, deci
 redenumirea sau mutarea fișierului nu pierde coperta și metadatele. Cărțile șterse dispar din catalog.
@@ -249,6 +250,20 @@ def title_from_filename(f):
 
 # ---------- main ----------
 
+def clean_sites(db):
+    """Scoate din conținutul indexat adresele site-urilor de descărcare (subsolul paginilor)."""
+    rows = db.execute('SELECT rowid, content FROM books_fts').fetchall()
+    changed = 0
+    for rowid, content in rows:
+        if content and rb.DOWNLOAD_SITES.search(content):
+            clean = re.sub(r'[ \t]+', ' ', rb.strip_sites(content))
+            clean = '\n'.join(l.strip() for l in clean.splitlines() if l.strip())
+            db.execute('UPDATE books_fts SET content=? WHERE rowid=?', (clean, rowid))
+            changed += 1
+    db.commit()
+    return changed
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('dir', nargs='?', default='/backup/books')
@@ -257,6 +272,8 @@ def main():
     ap.add_argument('--no-ai', action='store_true')
     ap.add_argument('--refresh-ai', action='store_true', help='recalculează metadatele AI pentru toate cărțile')
     ap.add_argument('--json', action='store_true', help='exportă și catalog.json')
+    ap.add_argument('--clean-only', action='store_true',
+                    help='doar scoate adresele site-urilor de descărcare din conținutul indexat')
     a = ap.parse_args()
 
     root = os.path.realpath(a.dir)
@@ -265,6 +282,9 @@ def main():
     db = sqlite3.connect(os.path.join(root, 'catalog.db'))
     db.executescript(SCHEMA)
     db.executemany('INSERT OR REPLACE INTO categories VALUES(?,?)', CATEGORIES.items())
+    if a.clean_only:
+        print(f'Conținut curățat de adresele site-urilor la {clean_sites(db)} cărți.')
+        return
 
     files = sorted(f for f in os.listdir(root)
                    if os.path.splitext(f)[1].lower() in EXTS and os.path.isfile(os.path.join(root, f)))
@@ -348,6 +368,10 @@ def main():
         if os.path.exists(c):
             os.remove(c)
     db.commit()
+
+    cleaned = clean_sites(db)
+    if cleaned:
+        print(f'Conținut curățat de adresele site-urilor la {cleaned} cărți.')
 
     n = db.execute('SELECT COUNT(*) FROM books').fetchone()[0]
     nc = db.execute('SELECT COUNT(*) FROM books WHERE cover IS NOT NULL').fetchone()[0]
