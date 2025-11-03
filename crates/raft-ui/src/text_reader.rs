@@ -282,7 +282,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
 
 fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
     ui.horizontal(|ui| {
-        crate::back_button(app, ui, "Înapoi la pagina cărții");
+        crate::back_button(app, ui, t("Înapoi la pagina cărții"));
         ui.separator();
         if let Some(view) = app.text.as_ref().filter(|v| v.book_id == id) {
             let current = view.chapter_of(view.top);
