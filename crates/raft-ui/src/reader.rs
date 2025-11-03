@@ -44,7 +44,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let pages = book.pages.unwrap_or(0);
 
     ui.horizontal(|ui| {
-        crate::back_button(app, ui, "Înapoi la pagina cărții");
+        crate::back_button(app, ui, t("Înapoi la pagina cărții"));
         ui.separator();
         if ui
             .add_enabled(page > 1, egui::Button::new("Anterioara"))
