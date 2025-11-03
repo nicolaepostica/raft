@@ -319,7 +319,7 @@ pub(crate) fn icon_button(
 
 /// The back icon (Backspace, Alt+Left or Esc).
 pub(crate) fn back_button(app: &mut RaftUi, ui: &mut egui::Ui, hint: &str) {
-    let hint = format!("{} (Backspace, Alt+←, Esc)", t(hint));
+    let hint = format!("{hint} (Backspace, Alt+←, Esc)");
     if icon_button(ui, "⬅", t("Înapoi"), &hint, true).clicked() {
         app.act("view.library", serde_json::json!({}));
     }
