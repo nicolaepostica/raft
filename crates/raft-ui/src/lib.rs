@@ -9,7 +9,10 @@ mod edit;
 mod library;
 mod reader;
 mod text_reader;
+pub mod i18n;
 pub mod theme;
+
+use i18n::{t, tf};
 
 use std::sync::Arc;
 
@@ -108,6 +111,7 @@ impl RaftUi {
 
     /// Draws one frame.
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        i18n::set(i18n::Lang::from_code(self.session.language()).unwrap_or(i18n::Lang::Ro));
         let dark = self.session.dark();
         if self.themed != Some(dark) {
             theme::apply(ui.ctx(), dark);
@@ -171,31 +175,30 @@ impl RaftUi {
         let mut close = false;
         let modal = egui::Modal::new(egui::Id::unique("confirm-delete")).show(ctx, |ui| {
             ui.set_max_width(460.0);
-            ui.heading("Ștergi cartea?");
+            ui.heading(t("Ștergi cartea?"));
             ui.add_space(6.0);
             ui.label(egui::RichText::new(book.display_title()).strong());
             ui.add(
-                egui::Label::new(format!(
-                    "Fișierul „{}” se mută în coșul de gunoi, iar cartea dispare din bibliotecă. \
-                     Îl poți recupera din coș; corecturile și progresul rămân în raft.db.",
-                    book.filename
+                egui::Label::new(tf(
+                    "Fișierul „{0}” se mută în coșul de gunoi, iar cartea dispare din bibliotecă. Îl poți recupera din coș; corecturile și progresul rămân în raft.db.",
+                    &[&book.filename],
                 ))
                 .wrap(),
             );
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if ui.button("Mută în coș").clicked() {
+                if ui.button(t("Mută în coș")).clicked() {
                     let ok = self
                         .run("book.delete", json!({ "id": id, "confirm": true }))
                         .is_ok();
                     if ok {
                         self.session.status =
-                            Some(format!("„{}” a fost mutată în coș", book.display_title()));
+                            Some(tf("„{0}” a fost mutată în coș", &[&book.display_title()]));
                         self.edit = None;
                     }
                     close = true;
                 }
-                if ui.button("Renunță").clicked() {
+                if ui.button(t("Renunță")).clicked() {
                     close = true;
                 }
             });
@@ -241,9 +244,9 @@ impl RaftUi {
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             for (menu, title) in [
-                ("File", "Fișier"),
-                ("Edit", "Editare"),
-                ("View", "Vizualizare"),
+                ("File", t("Fișier")),
+                ("Edit", t("Editare")),
+                ("View", t("Vizualizare")),
             ] {
                 ui.menu_button(title, |ui| {
                     for spec in registry() {
@@ -251,7 +254,7 @@ impl RaftUi {
                         if path.split('/').next() != Some(menu) {
                             continue;
                         }
-                        let mut button = egui::Button::new(spec.label);
+                        let mut button = egui::Button::new(i18n::t_dyn(spec.label));
                         if let Some(sc) = spec.shortcut.and_then(keyboard_shortcut) {
                             button = button.shortcut_text(ui.ctx().format_shortcut(&sc));
                         }
@@ -266,6 +269,18 @@ impl RaftUi {
                             ui.close();
                         }
                     }
+                    if menu == "View" {
+                        ui.separator();
+                        ui.menu_button(t("Limba interfeței"), |ui| {
+                            for lang in i18n::Lang::ALL {
+                                let on = self.session.language() == lang.code();
+                                if ui.selectable_label(on, lang.name()).clicked() {
+                                    self.act("view.language", json!({ "language": lang.code() }));
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
                 });
             }
         });
@@ -274,10 +289,9 @@ impl RaftUi {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let total = self.session.catalog().books.len();
-            ui.label(format!(
-                "{} din {} cărți",
-                self.session.result_count(),
-                total
+            ui.label(tf(
+                "{0} din {1} cărți",
+                &[&self.session.result_count(), &total],
             ));
             if let Some(status) = &self.session.status {
                 ui.separator();
@@ -305,8 +319,8 @@ pub(crate) fn icon_button(
 
 /// The back icon (Backspace, Alt+Left or Esc).
 pub(crate) fn back_button(app: &mut RaftUi, ui: &mut egui::Ui, hint: &str) {
-    let hint = format!("{hint} (Backspace, Alt+←, Esc)");
-    if icon_button(ui, "⬅", "Înapoi", &hint, true).clicked() {
+    let hint = format!("{} (Backspace, Alt+←, Esc)", t(hint));
+    if icon_button(ui, "⬅", t("Înapoi"), &hint, true).clicked() {
         app.act("view.library", serde_json::json!({}));
     }
 }
@@ -336,7 +350,7 @@ pub fn language_name(code: &str) -> &str {
         "uk" => "Українська",
         "de" => "Deutsch",
         "fr" => "Français",
-        "" => "necunoscută",
+        "" => t("necunoscută"),
         other => other,
     }
 }
