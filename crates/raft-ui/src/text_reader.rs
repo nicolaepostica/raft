@@ -306,7 +306,8 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
                 .map(|c| c.1.clone())
                 .unwrap_or_default();
             let mut goto = None;
-            egui::ComboBox::from_label(t("Cuprins")).id_salt("contents")
+            egui::ComboBox::from_label(t("Cuprins"))
+                .id_salt("contents")
                 .selected_text(egui::RichText::new(selected))
                 .width(260.0)
                 .height(500.0)
@@ -335,10 +336,18 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
             }
         }
         ui.separator();
-        if ui.button("A−").on_hover_text(t("Litere mai mici")).clicked() {
+        if ui
+            .button("A−")
+            .on_hover_text(t("Litere mai mici"))
+            .clicked()
+        {
             app.text_prefs.font_size = (app.text_prefs.font_size - 2.0).max(12.0);
         }
-        if ui.button("A+").on_hover_text(t("Litere mai mari")).clicked() {
+        if ui
+            .button("A+")
+            .on_hover_text(t("Litere mai mari"))
+            .clicked()
+        {
             app.text_prefs.font_size = (app.text_prefs.font_size + 2.0).min(40.0);
         }
         ui.separator();
