@@ -4,6 +4,7 @@ use raft_doc::edits::Field;
 use raft_doc::{Book, Format, Mark, Sort};
 use serde_json::json;
 
+use crate::i18n::{t, tf};
 use crate::{RaftUi, language_name};
 
 const CARD_W: f32 = 150.0;
@@ -15,11 +16,11 @@ const TOP_CATEGORIES: usize = 40;
 
 fn sort_label(s: Sort) -> &'static str {
     match s {
-        Sort::Relevance => "Relevanță",
-        Sort::Title => "Titlu",
-        Sort::YearDesc => "An (noi întâi)",
-        Sort::YearAsc => "An (vechi întâi)",
-        Sort::RecentlyAdded => "Adăugate recent",
+        Sort::Relevance => t("Relevanță"),
+        Sort::Title => t("Titlu"),
+        Sort::YearDesc => t("An (noi întâi)"),
+        Sort::YearAsc => t("An (vechi întâi)"),
+        Sort::RecentlyAdded => t("Adăugate recent"),
     }
 }
 
@@ -38,9 +39,9 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         let facets = app.session.facets().clone();
         let filters = app.session.query().filters.clone();
 
-        ui.heading("Filtre");
+        ui.heading(t("Filtre"));
         if ui
-            .add_enabled(!filters.is_empty(), egui::Button::new("Șterge filtrele"))
+            .add_enabled(!filters.is_empty(), egui::Button::new(t("Șterge filtrele")))
             .clicked()
         {
             app.act("filter.clear", json!({}));
@@ -50,7 +51,7 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         marks(app, ui, &facets, &filters);
         ui.add_space(6.0);
 
-        ui.strong("Limbă");
+        ui.strong(t("Limbă"));
         for (lang, n) in &facets.languages {
             let mut on = filters.languages.contains(lang);
             if ui
@@ -62,7 +63,7 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
 
-        ui.strong("Format");
+        ui.strong(t("Format"));
         for (format, n) in &facets.formats {
             let mut on = filters.formats.contains(format);
             let label = format!("{}  ({n})", format.slug().to_uppercase());
@@ -72,17 +73,17 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
 
-        ui.strong("Ani");
+        ui.strong(t("Ani"));
         let (lo, hi) = facets.years.unwrap_or((1900, 2030));
         let mut min = filters.year_min.unwrap_or(lo).clamp(lo, hi);
         let mut max = filters.year_max.unwrap_or(hi).clamp(min, hi);
         let typed = ui
             .horizontal(|ui| {
-                let from = ui.label("de la");
+                let from = ui.label(t("de la"));
                 let a = ui
                     .add(egui::DragValue::new(&mut min).range(lo..=max))
                     .labelled_by(from.id);
-                let to = ui.label("până la");
+                let to = ui.label(t("până la"));
                 let b = ui
                     .add(egui::DragValue::new(&mut max).range(min..=hi))
                     .labelled_by(to.id);
@@ -97,24 +98,24 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
             app.act("filter.years", json!({ "min": min, "max": max }));
         }
         if (filters.year_min.is_some() || filters.year_max.is_some())
-            && ui.small_button("orice an").clicked()
+            && ui.small_button(t("orice an")).clicked()
         {
             app.act("filter.years", json!({ "min": null, "max": null }));
         }
         ui.add_space(6.0);
 
-        ui.strong("Categorii");
+        ui.strong(t("Categorii"));
         let mut primary = filters.primary_category_only;
         if ui
-            .checkbox(&mut primary, "doar categoria principală")
-            .on_hover_text("Ignoră categoriile secundare (de ex. „career”, atribuită prea des)")
+            .checkbox(&mut primary, t("doar categoria principală"))
+            .on_hover_text(t("Ignoră categoriile secundare (de ex. „career”, atribuită prea des)"))
             .changed()
         {
             app.act("filter.primary_only", json!({ "on": primary }));
         }
         for (slug, n) in facets.categories.iter().take(TOP_CATEGORIES) {
             let mut on = filters.categories.contains(slug);
-            let name = app.session.catalog().category_name(slug).to_owned();
+            let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
             if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
                 app.act("filter.category.toggle", json!({ "slug": slug }));
             }
@@ -131,7 +132,7 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
         ui.allocate_exact_size(egui::vec2(width, 22.0), egui::Sense::click_and_drag());
     let (from, to) = (*min, *max);
     resp.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::Role::Slider, true, format!("Ani: {from}–{to}"))
+        egui::WidgetInfo::labeled(egui::Role::Slider, true, tf("Ani: {0}–{1}", &[&from, &to]))
     });
     let span = (hi - lo).max(1) as f32;
     let track = rect.shrink2(egui::vec2(8.0, 0.0));
@@ -188,15 +189,15 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
     for x in [x_of(*min), x_of(*max)] {
         painter.circle(egui::pos2(x, y), 7.0, v.widgets.active.bg_fill, stroke);
     }
-    resp.on_hover_text("Trage capetele ca să alegi intervalul de ani");
+    resp.on_hover_text(t("Trage capetele ca să alegi intervalul de ani"));
     (*min, *max) != (old_min, old_max)
 }
 
 fn mark_label(m: Mark) -> &'static str {
     match m {
-        Mark::Edited => "Corectate manual",
-        Mark::Incomplete => "Date incomplete",
-        Mark::Reviewed => "Verificate",
+        Mark::Edited => t("Corectate manual"),
+        Mark::Incomplete => t("Date incomplete"),
+        Mark::Reviewed => t("Verificate"),
     }
 }
 
@@ -207,7 +208,7 @@ fn marks(
     facets: &raft_engine::Facets,
     filters: &raft_doc::Filters,
 ) {
-    ui.strong("Date");
+    ui.strong(t("Date"));
     let count = |m: Mark| {
         facets
             .marks
@@ -218,11 +219,11 @@ fn marks(
     for m in Mark::ALL {
         let mut on = filters.marks.contains(&m);
         let hint = match m {
-            Mark::Edited => "Cărți în care ai corectat cel puțin un câmp",
+            Mark::Edited => t("Cărți în care ai corectat cel puțin un câmp"),
             Mark::Incomplete => {
-                "Fără titlu, autori, an, limbă, categorii sau descriere și nemarcate ca verificate"
+                t("Fără titlu, autori, an, limbă, categorii sau descriere și nemarcate ca verificate")
             }
-            Mark::Reviewed => "Marcate de tine ca verificate",
+            Mark::Reviewed => t("Marcate de tine ca verificate"),
         };
         if ui
             .checkbox(&mut on, format!("{}  ({})", mark_label(m), count(m)))
@@ -233,7 +234,7 @@ fn marks(
         }
     }
     let open = !filters.missing.is_empty();
-    egui::CollapsingHeader::new("Lipsește câmpul…")
+    egui::CollapsingHeader::new(t("Lipsește câmpul…")).id_salt("missing-fields")
         .default_open(open)
         .show(ui, |ui| {
             for (field, n) in &facets.missing {
@@ -284,7 +285,7 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
         Vec::new()
     };
     if !recent.is_empty() {
-        ui.strong("Continuă lectura");
+        ui.strong(t("Continuă lectura"));
         egui::ScrollArea::horizontal()
             .id_salt("continue")
             .show(ui, |ui| {
@@ -300,7 +301,7 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
     let results: Vec<Book> = app.session.results().cloned().collect();
     if results.is_empty() {
         ui.add_space(40.0);
-        ui.vertical_centered(|ui| ui.label("Nicio carte nu se potrivește căutării."));
+        ui.vertical_centered(|ui| ui.label(t("Nicio carte nu se potrivește căutării.")));
         return;
     }
     let cols = (((ui.available_width() + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
@@ -324,7 +325,7 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
 fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         let edit = egui::TextEdit::singleline(&mut app.search)
-            .hint_text("Caută după titlu, autor, etichetă sau conținut…  (Ctrl+F)")
+            .hint_text(t("Caută după titlu, autor, etichetă sau conținut…  (Ctrl+F)"))
             .desired_width((ui.available_width() - 260.0).max(120.0));
         let resp = ui.add(edit);
         if app.focus_search {
@@ -338,7 +339,7 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
             app.search.clone_from(&app.session.query().text);
         }
         let current = app.session.query().sort;
-        egui::ComboBox::from_label("Sortare")
+        egui::ComboBox::from_label(t("Sortare")).id_salt("sort")
             .selected_text(sort_label(current))
             .show_ui(ui, |ui| {
                 for s in Sort::ALL {
@@ -394,10 +395,10 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     let mut y = cover_rect.top() + 4.0;
     let at = |y: f32| egui::pos2(cover_rect.left() + 4.0, y);
     if book.edited {
-        y += 2.0 + badge(&painter, at(y), "corectată", crate::theme::edited());
+        y += 2.0 + badge(&painter, at(y), t("corectată"), crate::theme::edited());
     }
     if book.is_incomplete() {
-        badge(&painter, at(y), "incompletă", crate::theme::incomplete());
+        badge(&painter, at(y), t("incompletă"), crate::theme::incomplete());
     }
     if let Some(p) = app.session.progress(&book.id) {
         let bar = egui::Rect::from_min_size(
