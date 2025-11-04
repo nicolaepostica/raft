@@ -108,7 +108,9 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         let mut primary = filters.primary_category_only;
         if ui
             .checkbox(&mut primary, t("doar categoria principală"))
-            .on_hover_text(t("Ignoră categoriile secundare (de ex. „career”, atribuită prea des)"))
+            .on_hover_text(t(
+                "Ignoră categoriile secundare (de ex. „career”, atribuită prea des)",
+            ))
             .changed()
         {
             app.act("filter.primary_only", json!({ "on": primary }));
@@ -220,9 +222,9 @@ fn marks(
         let mut on = filters.marks.contains(&m);
         let hint = match m {
             Mark::Edited => t("Cărți în care ai corectat cel puțin un câmp"),
-            Mark::Incomplete => {
-                t("Fără titlu, autori, an, limbă, categorii sau descriere și nemarcate ca verificate")
-            }
+            Mark::Incomplete => t(
+                "Fără titlu, autori, an, limbă, categorii sau descriere și nemarcate ca verificate",
+            ),
             Mark::Reviewed => t("Marcate de tine ca verificate"),
         };
         if ui
@@ -234,7 +236,8 @@ fn marks(
         }
     }
     let open = !filters.missing.is_empty();
-    egui::CollapsingHeader::new(t("Lipsește câmpul…")).id_salt("missing-fields")
+    egui::CollapsingHeader::new(t("Lipsește câmpul…"))
+        .id_salt("missing-fields")
         .default_open(open)
         .show(ui, |ui| {
             for (field, n) in &facets.missing {
@@ -325,7 +328,9 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
 fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         let edit = egui::TextEdit::singleline(&mut app.search)
-            .hint_text(t("Caută după titlu, autor, etichetă sau conținut…  (Ctrl+F)"))
+            .hint_text(t(
+                "Caută după titlu, autor, etichetă sau conținut…  (Ctrl+F)",
+            ))
             .desired_width((ui.available_width() - 260.0).max(120.0));
         let resp = ui.add(edit);
         if app.focus_search {
@@ -339,7 +344,8 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
             app.search.clone_from(&app.session.query().text);
         }
         let current = app.session.query().sort;
-        egui::ComboBox::from_label(t("Sortare")).id_salt("sort")
+        egui::ComboBox::from_label(t("Sortare"))
+            .id_salt("sort")
             .selected_text(sort_label(current))
             .show_ui(ui, |ui| {
                 for s in Sort::ALL {
