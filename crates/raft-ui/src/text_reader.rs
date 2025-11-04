@@ -11,6 +11,7 @@ use raft_text::{Block, Kind, TextBook};
 use serde_json::json;
 
 use crate::RaftUi;
+use crate::i18n::{t, tf};
 
 /// Widest text column, in points.
 const COLUMN: f32 = 760.0;
@@ -156,7 +157,7 @@ fn block_at(view: &TextView, y: f32) -> usize {
 
 pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let Some(book) = app.session.book(id).cloned() else {
-        ui.label("Cartea nu mai există în catalog.");
+        ui.label(t("Cartea nu mai există în catalog."));
         return;
     };
     // Load (in the background) and keep the parsed book.
@@ -167,7 +168,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.spinner();
-                    ui.label("Se pregătește cartea…");
+                    ui.label(t("Se pregătește cartea…"));
                 });
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(50));
@@ -177,8 +178,8 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 top_bar(app, ui, book.display_title(), id);
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
-                    ui.label(format!("Cartea nu a putut fi citită: {e}"));
-                    if ui.button("Deschide în aplicația externă").clicked() {
+                    ui.label(tf("Cartea nu a putut fi citită: {0}", &[&e]));
+                    if ui.button(t("Deschide în aplicația externă")).clicked() {
                         app.act("book.open_external", json!({ "id": id }));
                     }
                 });
@@ -286,11 +287,11 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
         ui.separator();
         if let Some(view) = app.text.as_ref().filter(|v| v.book_id == id) {
             let current = view.chapter_of(view.top);
-            let name = |i: usize, t: &str| {
-                if t.is_empty() {
-                    format!("Capitolul {}", i + 1)
+            let name = |i: usize, title: &str| {
+                if title.is_empty() {
+                    tf("Capitolul {0}", &[&(i + 1)])
                 } else {
-                    t.to_owned()
+                    title.to_owned()
                 }
             };
             let chapters: Vec<(usize, String)> = view
@@ -305,7 +306,7 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
                 .map(|c| c.1.clone())
                 .unwrap_or_default();
             let mut goto = None;
-            egui::ComboBox::from_label("Cuprins")
+            egui::ComboBox::from_label(t("Cuprins"))
                 .selected_text(egui::RichText::new(selected))
                 .width(260.0)
                 .height(500.0)
@@ -334,10 +335,10 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
             }
         }
         ui.separator();
-        if ui.button("A−").on_hover_text("Litere mai mici").clicked() {
+        if ui.button("A−").on_hover_text(t("Litere mai mici")).clicked() {
             app.text_prefs.font_size = (app.text_prefs.font_size - 2.0).max(12.0);
         }
-        if ui.button("A+").on_hover_text("Litere mai mari").clicked() {
+        if ui.button("A+").on_hover_text(t("Litere mai mari")).clicked() {
             app.text_prefs.font_size = (app.text_prefs.font_size + 2.0).min(40.0);
         }
         ui.separator();
