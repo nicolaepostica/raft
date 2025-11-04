@@ -14,19 +14,19 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
     ui.horizontal(|ui| {
         let read = match progress.as_ref() {
             Some(p) if p.page.is_some_and(|n| n > 1) => {
-                format!("Continuă de la pagina {}", p.page.unwrap_or(1))
+                tf("Continuă de la pagina {0}", &[&p.page.unwrap_or(1)])
             }
-            Some(p) if p.block().is_some() => format!("Continuă lectura ({:.0}%)", p.percent),
-            _ => "Citește".to_owned(),
+            Some(p) if p.block().is_some() => tf("Continuă lectura ({0}%)", &[&format!("{:.0}", p.percent)]),
+            _ => t("Citește").to_owned(),
         };
-        if crate::icon_button(ui, "📖", "Citește", &read, true).clicked() {
+        if crate::icon_button(ui, "📖", t("Citește"), &read, true).clicked() {
             app.act("book.read", json!({ "id": id }));
         }
         if crate::icon_button(
             ui,
             "↗",
-            "Deschide în aplicația externă",
-            "Deschide în aplicația externă",
+            t("Deschide în aplicația externă"),
+            t("Deschide în aplicația externă"),
             true,
         )
         .clicked()
@@ -36,8 +36,8 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
         if crate::icon_button(
             ui,
             "📂",
-            "Arată în dosar",
-            "Arată fișierul în managerul de fișiere",
+            t("Arată în dosar"),
+            t("Arată fișierul în managerul de fișiere"),
             true,
         )
         .clicked()
@@ -48,35 +48,35 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
         let cover = crate::icon_button(
             ui,
             "🖼",
-            "Copertă",
-            "Schimbă coperta (sau trage o imagine peste ea)",
+            t("Copertă"),
+            t("Schimbă coperta (sau trage o imagine peste ea)"),
             !picking,
         );
         egui::Popup::menu(&cover).show(|ui| {
-            if ui.button("Alege o imagine…").clicked() {
+            if ui.button(t("Alege o imagine…")).clicked() {
                 match app.files.pick_image() {
                     Some(rx) => app.picking = Some((id.clone(), rx)),
                     None => {
                         app.session.status =
-                            Some("alegerea fișierelor nu e disponibilă aici".into());
+                            Some(t("alegerea fișierelor nu e disponibilă aici").into());
                     }
                 }
             }
             if book.format.is_paged() {
-                if ui.button("Prima pagină a cărții").clicked() {
+                if ui.button(t("Prima pagină a cărții")).clicked() {
                     app.act("book.cover.set", json!({ "id": id, "page": 1 }));
                 }
                 if let Some(n) = progress.as_ref().and_then(|p| p.page).filter(|n| *n > 1)
-                    && ui.button(format!("Pagina {n}, unde ai rămas")).clicked()
+                    && ui.button(tf("Pagina {0}, unde ai rămas", &[&n])).clicked()
                 {
                     app.act("book.cover.set", json!({ "id": id, "page": n }));
                 }
             }
-            if app.files.has_custom_cover(book) && ui.button("Coperta din catalog").clicked() {
+            if app.files.has_custom_cover(book) && ui.button(t("Coperta din catalog")).clicked() {
                 app.act("book.cover.set", json!({ "id": id, "catalog": true }));
             }
             ui.label(
-                egui::RichText::new("Poți și să tragi o imagine peste copertă.")
+                egui::RichText::new(t("Poți și să tragi o imagine peste copertă."))
                     .small()
                     .weak(),
             );
@@ -85,8 +85,8 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
         if crate::icon_button(
             ui,
             "🗑",
-            "Șterge cartea",
-            "Șterge cartea: fișierul merge în coșul de gunoi",
+            t("Șterge cartea"),
+            t("Șterge cartea: fișierul merge în coșul de gunoi"),
             true,
         )
         .clicked()
@@ -106,7 +106,7 @@ fn drop_cover(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book, rect: 
         painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
-            "Lasă imaginea aici\nca să devină copertă",
+            t("Lasă imaginea aici\nca să devină copertă"),
             egui::FontId::proportional(18.0),
             egui::Color32::WHITE,
         );
@@ -125,15 +125,15 @@ fn drop_cover(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book, rect: 
 
 pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let Some(book) = app.session.book(id).cloned() else {
-        ui.label("Cartea nu mai există în catalog.");
+        ui.label(t("Cartea nu mai există în catalog."));
         return;
     };
     let editing = matches!(app.session.route(), raft_doc::Route::Edit { .. });
     ui.horizontal(|ui| {
         let hint = if editing {
-            "Înapoi la pagina cărții"
+            t("Înapoi la pagina cărții")
         } else {
-            "Înapoi la bibliotecă"
+            t("Înapoi la bibliotecă")
         };
         crate::back_button(app, ui, hint);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -143,25 +143,25 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 let changed = crate::edit::has_changes(app, &book);
                 let save = ui.input_mut(|i| i.consume_shortcut(&SAVE));
                 if changed
-                    && (crate::icon_button(ui, "💾", "Salvează", "Salvează (Ctrl+S)", true)
+                    && (crate::icon_button(ui, "💾", t("Salvează"), t("Salvează (Ctrl+S)"), true)
                         .clicked()
                         || save)
                 {
                     crate::edit::save(app, &book);
                 }
                 let hint = if changed {
-                    "Renunță la modificări"
+                    t("Renunță la modificări")
                 } else {
-                    "Închide editarea"
+                    t("Închide editarea")
                 };
-                if crate::icon_button(ui, "✖", "Renunță", hint, true).clicked() {
+                if crate::icon_button(ui, "✖", t("Renunță"), hint, true).clicked() {
                     crate::edit::cancel(app, &book);
                 }
             } else if crate::icon_button(
                 ui,
                 "✏",
-                "Corectează metadatele",
-                "Corectează metadatele",
+                t("Corectează metadatele"),
+                t("Corectează metadatele"),
                 true,
             )
             .clicked()
@@ -183,7 +183,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         let scale = (300.0 / size.x).min(420.0 / size.y);
                         ui.add(egui::Image::new((t.id(), size * scale)))
                     }
-                    None => ui.add_sized([300.0, 420.0], egui::Label::new("fără copertă")),
+                    None => ui.add_sized([300.0, 420.0], egui::Label::new(t("fără copertă"))),
                 };
                 ui.painter().rect_stroke(
                     cover.rect,
@@ -219,18 +219,18 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                                 ui.end_row();
                             }
                         };
-                        row("An", book.year.map(|y| y.to_string()).unwrap_or_default());
-                        row("Limbă", language_name(&book.language).to_owned());
-                        row("Format", book.format.slug().to_uppercase());
+                        row(t("An"), book.year.map(|y| y.to_string()).unwrap_or_default());
+                        row(t("Limbă"), language_name(&book.language).to_owned());
+                        row(t("Format"), book.format.slug().to_uppercase());
                         row(
-                            "Pagini",
+                            t("Pagini"),
                             book.pages.map(|p| p.to_string()).unwrap_or_default(),
                         );
-                        row("Editură", book.publisher.clone().unwrap_or_default());
-                        row("ISBN", book.isbn.clone().unwrap_or_default());
-                        row("Fișier", book.filename.clone());
+                        row(t("Editură"), book.publisher.clone().unwrap_or_default());
+                        row(t("ISBN"), book.isbn.clone().unwrap_or_default());
+                        row(t("Fișier"), book.filename.clone());
                         row(
-                            "Mărime",
+                            t("Mărime"),
                             format!("{:.1} MB", book.size as f64 / 1_048_576.0),
                         );
                     });
@@ -240,7 +240,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         let name = app.session.catalog().category_name(slug).to_owned();
                         if ui
                             .button(name)
-                            .on_hover_text("Arată cărțile din categorie")
+                            .on_hover_text(t("Arată cărțile din categorie"))
                             .clicked()
                         {
                             app.act("filter.clear", json!({}));
@@ -272,9 +272,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 if !missing.is_empty() || book.reviewed {
                     ui.horizontal_wrapped(|ui| {
                         let text = if missing.is_empty() {
-                            "Nu lipsește nimic".to_owned()
+                            t("Nu lipsește nimic").to_owned()
                         } else {
-                            format!("Lipsește: {}", missing.join(", ").to_lowercase())
+                            tf("Lipsește: {0}", &[&missing.join(", ").to_lowercase()])
                         };
                         let text = egui::RichText::new(text);
                         if book.is_incomplete() {
@@ -284,9 +284,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         }
                         let mut reviewed = book.reviewed;
                         if ui
-                            .checkbox(&mut reviewed, "verificată")
+                            .checkbox(&mut reviewed, t("verificată"))
                             .on_hover_text(
-                                "Ce lipsește nu se poate afla; cartea nu mai apare la „date incomplete”",
+                                t("Ce lipsește nu se poate afla; cartea nu mai apare la „date incomplete”"),
                             )
                             .changed()
                         {
@@ -299,13 +299,13 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                     ui.horizontal(|ui| {
                         let text = match (p.page, p.block()) {
                             (Some(page), _) => {
-                                format!("Ai ajuns la pagina {page} ({:.0}%)", p.percent)
+                                tf("Ai ajuns la pagina {0} ({1}%)", &[&page, &format!("{:.0}", p.percent)])
                             }
-                            (None, Some(_)) => format!("Ai citit {:.0}% din carte", p.percent),
-                            (None, None) => "Deschisă în aplicația externă".to_owned(),
+                            (None, Some(_)) => tf("Ai citit {0}% din carte", &[&format!("{:.0}", p.percent)]),
+                            (None, None) => t("Deschisă în aplicația externă").to_owned(),
                         };
                         ui.label(text);
-                        if ui.small_button("Șterge progresul").clicked() {
+                        if ui.small_button(t("Șterge progresul")).clicked() {
                             app.act("progress.reset", json!({ "id": book.id }));
                         }
                     });
