@@ -10,6 +10,7 @@ use raft_doc::edits::{Field, field_value};
 use serde_json::{Map, Value, json};
 
 use crate::RaftUi;
+use crate::i18n::{t, tf};
 
 /// The form's editable copy of a book's metadata.
 #[derive(Debug, Clone, PartialEq)]
@@ -235,8 +236,9 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
             };
             if ui
                 .button(text)
-                .on_hover_text(format!(
-                    "Cartea {pos} din {total} din rezultatele bibliotecii"
+                .on_hover_text(tf(
+                    "Cartea {0} din {1} din rezultatele bibliotecii",
+                    &[pos, total],
                 ))
                 .clicked()
             {
