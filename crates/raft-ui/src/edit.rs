@@ -100,16 +100,16 @@ impl Draft {
 
 pub fn label(field: Field) -> &'static str {
     match field {
-        Field::Title => "Titlu",
-        Field::Authors => "Autori",
-        Field::Year => "An",
-        Field::Language => "Limbă",
-        Field::Publisher => "Editură",
-        Field::Isbn => "ISBN",
-        Field::Categories => "Categorii",
-        Field::Tags => "Etichete",
-        Field::Description => "Descriere",
-        Field::Reviewed => "Verificată",
+        Field::Title => t("Titlu"),
+        Field::Authors => t("Autori"),
+        Field::Year => t("An"),
+        Field::Language => t("Limbă"),
+        Field::Publisher => t("Editură"),
+        Field::Isbn => t("ISBN"),
+        Field::Categories => t("Categorii"),
+        Field::Tags => t("Etichete"),
+        Field::Description => t("Descriere"),
+        Field::Reviewed => t("Verificată"),
     }
 }
 
@@ -125,7 +125,7 @@ fn field_label(
     ui.horizontal(|ui| {
         let resp = ui.label(label(field));
         if book.lacks(field) {
-            let text = egui::RichText::new("lipsește").small();
+            let text = egui::RichText::new(t("lipsește")).small();
             if Field::REQUIRED.contains(&field) {
                 ui.label(text.color(ui.visuals().error_fg_color));
             } else {
@@ -139,14 +139,14 @@ fn field_label(
                 .map(|b| field_value(b, field))
                 .unwrap_or_default();
             ui.label(
-                egui::RichText::new("corectat")
+                egui::RichText::new(t("corectat"))
                     .small()
                     .color(ui.visuals().warn_fg_color),
             )
-            .on_hover_text(format!("În catalog: {original}"));
+            .on_hover_text(tf("În catalog: {0}", &[&original]));
             if ui
-                .small_button("din catalog")
-                .on_hover_text("Renunță la corectură și folosește valoarea din catalog")
+                .small_button(t("din catalog"))
+                .on_hover_text(t("Renunță la corectură și folosește valoarea din catalog"))
                 .clicked()
             {
                 app.act(
@@ -210,10 +210,10 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         Some(d) => d,
         None => Draft::from_book(book),
     };
-    ui.heading("Corectează metadatele");
+    ui.heading(t("Corectează metadatele"));
     ui.label(
         egui::RichText::new(
-            "Corecturile se salvează separat de catalog și rămân după build-catalog --refresh-ai.",
+            t("Corecturile se salvează separat de catalog și rămân după build-catalog --refresh-ai."),
         )
         .small()
         .weak(),
@@ -221,7 +221,7 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     ui.add_space(6.0);
     ui.checkbox(
         &mut draft.reviewed,
-        "Verificată: ce lipsește nu se poate afla (nu mai apare la „date incomplete”)",
+        t("Verificată: ce lipsește nu se poate afla (nu mai apare la „date incomplete”)"),
     );
     let changes = draft.changes(book);
     let next = next_result(app, &book.id);
@@ -229,9 +229,9 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     ui.horizontal(|ui| {
         if let Some((next, pos, total)) = &next {
             let text = if changes.is_empty() {
-                "Următoarea"
+                t("Următoarea")
             } else {
-                "Salvează și următoarea"
+                t("Salvează și următoarea")
             };
             if ui
                 .button(text)
@@ -252,8 +252,8 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         }
         if !app.session.edited_fields(&book.id).is_empty()
             && ui
-                .button("Revino la catalog")
-                .on_hover_text("Șterge toate corecturile acestei cărți")
+                .button(t("Revino la catalog"))
+                .on_hover_text(t("Șterge toate corecturile acestei cărți"))
                 .clicked()
         {
             app.act("book.edit.reset", json!({ "id": book.id }));
@@ -277,19 +277,19 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         .labelled_by(lbl.id);
     };
     let l = field_label(app, ui, book, Field::Title, &mut reset);
-    single(ui, &mut draft.title, &l, "titlul din carte, netradus");
+    single(ui, &mut draft.title, &l, t("titlul din carte, netradus"));
     let l = field_label(app, ui, book, Field::Authors, &mut reset);
-    single(ui, &mut draft.authors, &l, "separați prin virgulă");
+    single(ui, &mut draft.authors, &l, t("separați prin virgulă"));
     let l = field_label(app, ui, book, Field::Year, &mut reset);
-    single(ui, &mut draft.year, &l, "gol = necunoscut");
+    single(ui, &mut draft.year, &l, t("gol = necunoscut"));
     let l = field_label(app, ui, book, Field::Language, &mut reset);
-    single(ui, &mut draft.language, &l, "ru, en, ro…");
+    single(ui, &mut draft.language, &l, t("ru, en, ro…"));
     let l = field_label(app, ui, book, Field::Publisher, &mut reset);
     single(ui, &mut draft.publisher, &l, "");
     let l = field_label(app, ui, book, Field::Isbn, &mut reset);
     single(ui, &mut draft.isbn, &l, "");
     let l = field_label(app, ui, book, Field::Tags, &mut reset);
-    single(ui, &mut draft.tags, &l, "separate prin virgulă");
+    single(ui, &mut draft.tags, &l, t("separate prin virgulă"));
     let l = field_label(app, ui, book, Field::Description, &mut reset);
     ui.add(
         egui::TextEdit::multiline(&mut draft.description)
