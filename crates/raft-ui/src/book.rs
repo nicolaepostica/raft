@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::i18n::{t, tf};
 use crate::{RaftUi, language_name};
 
 const SAVE: egui::KeyboardShortcut =
@@ -237,7 +238,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 ui.add_space(8.0);
                 ui.horizontal_wrapped(|ui| {
                     for slug in &book.categories {
-                        let name = app.session.catalog().category_name(slug).to_owned();
+                        let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
                         if ui
                             .button(name)
                             .on_hover_text(t("Arată cărțile din categorie"))
@@ -260,8 +261,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 let edited = app.session.edited_fields(&book.id).len();
                 if edited > 0 {
                     ui.label(
-                        egui::RichText::new(format!(
-                            "Corectată manual: {edited} câmp(uri); restul vin din catalog"
+                        egui::RichText::new(tf(
+                            "Corectată manual: {0} câmp(uri); restul vin din catalog",
+                            &[&edited],
                         ))
                         .small()
                         .color(crate::theme::edited()),
