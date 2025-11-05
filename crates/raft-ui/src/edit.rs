@@ -213,9 +213,9 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     };
     ui.heading(t("Corectează metadatele"));
     ui.label(
-        egui::RichText::new(
-            t("Corecturile se salvează separat de catalog și rămân după build-catalog --refresh-ai."),
-        )
+        egui::RichText::new(t(
+            "Corecturile se salvează separat de catalog și rămân după build-catalog --refresh-ai.",
+        ))
         .small()
         .weak(),
     );
