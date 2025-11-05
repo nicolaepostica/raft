@@ -142,6 +142,8 @@ pub struct Session {
     cover_revs: BTreeMap<BookId, u32>,
     /// Dark theme instead of the light one (a preference, not undone).
     dark: bool,
+    /// Interface language code (`ro`, `en`, `ru`).
+    language: String,
 }
 
 impl Session {
@@ -174,6 +176,7 @@ impl Session {
             status: None,
             cover_revs: BTreeMap::new(),
             dark: false,
+            language: "ro".to_owned(),
         };
         s.refresh();
         s
@@ -207,6 +210,18 @@ impl Session {
 
     pub fn dark(&self) -> bool {
         self.dark
+    }
+
+    /// Starts with the saved interface language (unknown codes are ignored).
+    pub fn with_language(mut self, code: &str) -> Self {
+        if commands::LANGUAGES.contains(&code) {
+            self.language = code.to_owned();
+        }
+        self
+    }
+
+    pub fn language(&self) -> &str {
+        &self.language
     }
 
     /// Changes each time the book's cover is replaced (0 = never in this session).
@@ -513,6 +528,7 @@ impl Session {
             "can_redo": self.can_redo(),
             "status": self.status,
             "theme": if self.dark { "dark" } else { "light" },
+            "language": self.language,
         })
     }
 }
