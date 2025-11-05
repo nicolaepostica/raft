@@ -6,10 +6,10 @@
 mod book;
 mod covers;
 mod edit;
+pub mod i18n;
 mod library;
 mod reader;
 mod text_reader;
-pub mod i18n;
 pub mod theme;
 
 use i18n::{t, tf};
