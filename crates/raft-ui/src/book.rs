@@ -17,7 +17,9 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
             Some(p) if p.page.is_some_and(|n| n > 1) => {
                 tf("Continuă de la pagina {0}", &[&p.page.unwrap_or(1)])
             }
-            Some(p) if p.block().is_some() => tf("Continuă lectura ({0}%)", &[&format!("{:.0}", p.percent)]),
+            Some(p) if p.block().is_some() => {
+                tf("Continuă lectura ({0}%)", &[&format!("{:.0}", p.percent)])
+            }
             _ => t("Citește").to_owned(),
         };
         if crate::icon_button(ui, "📖", t("Citește"), &read, true).clicked() {
