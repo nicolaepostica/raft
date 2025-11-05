@@ -344,8 +344,7 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
             app.search.clone_from(&app.session.query().text);
         }
         let current = app.session.query().sort;
-        egui::ComboBox::from_label(t("Sortare"))
-            .id_salt("sort")
+        egui::ComboBox::new("sort", t("Sortare"))
             .selected_text(sort_label(current))
             .show_ui(ui, |ui| {
                 for s in Sort::ALL {
