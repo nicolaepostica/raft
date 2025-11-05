@@ -228,6 +228,11 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("view.theme", "Temă albă / întunecată", view_theme)
     },
     CommandSpec {
+        params: r#"{"language": "ro"|"en"|"ru"}"#,
+        record: false,
+        ..spec("view.language", "Schimbă limba interfeței", view_language)
+    },
+    CommandSpec {
         menu: Some("View/Back"),
         shortcut: key("Backspace"),
         also: &[
@@ -457,6 +462,23 @@ fn sort_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         serde_json::from_value(v).map_err(|e| EngineError::BadParams(format!("`sort`: {e}")))?;
     s.state.query.sort = sort;
     Ok(Value::Null)
+}
+
+/// Interface languages the UI has translations for.
+pub const LANGUAGES: [&str; 3] = ["ro", "en", "ru"];
+
+fn view_language(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let code = str(p, "language")?;
+    if !LANGUAGES.contains(&code) {
+        return Err(bad(format!(
+            "unknown interface language `{code}` (ro, en or ru)"
+        )));
+    }
+    s.backend
+        .save_setting("language", code)
+        .map_err(|e| EngineError::Backend(format!("language not saved: {e}")))?;
+    s.language = code.to_owned();
+    Ok(json!({ "language": code }))
 }
 
 fn view_theme(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
