@@ -415,6 +415,20 @@ fn covers_change_from_one_source_and_bump_the_revision() {
 }
 
 #[test]
+fn interface_language_changes_and_is_validated() {
+    let (mut s, _) = session();
+    assert_eq!(s.language(), "ro");
+    s.run("view.language", &json!({"language": "ru"})).unwrap();
+    assert_eq!(s.language(), "ru");
+    assert!(s.run("view.language", &json!({"language": "de"})).is_err());
+    assert!(s.run("view.language", &json!({})).is_err());
+    assert!(s.run("edit.undo", &Value::Null).is_err());
+    assert_eq!(s.snapshot()["language"], "ru");
+    let (s, _) = session();
+    assert_eq!(s.with_language("xx").language(), "ro");
+}
+
+#[test]
 fn theme_switches_and_is_not_undone() {
     let (mut s, _) = session();
     assert!(!s.dark());
