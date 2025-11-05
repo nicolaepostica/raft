@@ -551,14 +551,18 @@ mod tests {
         ];
         let mut keys = Vec::new();
         for src in sources {
-            for marker in ["t(\"", "tf(\""] {
+            for marker in ["t(", "tf("] {
                 for (i, _) in src.match_indices(marker) {
                     // Skip identifiers ending in t/tf (`list(`, `Sort(`…).
                     let before = src.get(..i).and_then(|s| s.chars().last());
                     if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
                         continue;
                     }
-                    let rest = src.get(i + marker.len()..).unwrap_or_default();
+                    // rustfmt may put a long key on the next line.
+                    let rest = src.get(i + marker.len()..).unwrap_or_default().trim_start();
+                    let Some(rest) = rest.strip_prefix('"') else {
+                        continue;
+                    };
                     let mut key = String::new();
                     let mut chars = rest.chars();
                     while let Some(c) = chars.next() {
