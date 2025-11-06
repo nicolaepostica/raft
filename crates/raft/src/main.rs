@@ -171,9 +171,7 @@ fn main() -> Result<()> {
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
     // The saved language, else Romanian (the language the app was written in).
-    let language = backend
-        .load_language()?
-        .unwrap_or_else(|| "ro".to_owned());
+    let language = backend.load_language()?.unwrap_or_else(|| "ro".to_owned());
     // RAFT_THEME=light|dark wins over the saved choice for this run.
     let dark = match std::env::var("RAFT_THEME").as_deref() {
         Ok("dark") => true,
