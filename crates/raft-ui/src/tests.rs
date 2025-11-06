@@ -392,6 +392,36 @@ fn edit_icon_turns_into_cancel_then_save_and_cancel() {
 }
 
 #[test]
+fn interface_language_changes_from_the_view_menu() {
+    let mut h = harness();
+    h.run();
+    h.get_by_label("Vizualizare").click();
+    h.run();
+    h.get_by_label("Limba interfeței").click();
+    h.run();
+    h.get_by_label("English").click();
+    h.run();
+    assert_eq!(h.state().session.language(), "en");
+    h.get_by_label("Filters");
+    h.get_by_label("2 of 2 books");
+    h.get_by_label("Fiction  (1)");
+    h.state_mut()
+        .run("view.language", serde_json::json!({"language": "ru"}))
+        .unwrap();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Читать");
+    h.get_by_label("Год");
+    h.state_mut()
+        .run("view.language", serde_json::json!({"language": "ro"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Citește");
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
