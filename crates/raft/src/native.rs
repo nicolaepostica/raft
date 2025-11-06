@@ -50,6 +50,11 @@ impl NativeBackend {
         Ok(self.user.load_overrides()?)
     }
 
+    /// The saved interface language, if any.
+    pub fn load_language(&self) -> Result<Option<String>> {
+        Ok(self.user.setting("language")?)
+    }
+
     /// The saved theme: true for dark.
     pub fn load_dark(&self) -> Result<bool> {
         Ok(self.user.setting("theme")?.as_deref() == Some("dark"))
