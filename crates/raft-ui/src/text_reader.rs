@@ -306,8 +306,7 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
                 .map(|c| c.1.clone())
                 .unwrap_or_default();
             let mut goto = None;
-            egui::ComboBox::from_label(t("Cuprins"))
-                .id_salt("contents")
+            egui::ComboBox::new("contents", t("Cuprins"))
                 .selected_text(egui::RichText::new(selected))
                 .width(260.0)
                 .height(500.0)
