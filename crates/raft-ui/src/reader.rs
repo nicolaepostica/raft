@@ -3,6 +3,7 @@
 use egui::TextureHandle;
 use serde_json::json;
 
+use crate::i18n::{t, tf};
 use crate::{RaftUi, decode_image};
 
 /// Page textures kept for quick back-and-forth.
@@ -37,7 +38,7 @@ impl ReaderView {
 
 pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let Some(book) = app.session.book(id).cloned() else {
-        ui.label("Cartea nu mai există în catalog.");
+        ui.label(t("Cartea nu mai există în catalog."));
         return;
     };
     let page = app.session.progress(id).and_then(|p| p.page).unwrap_or(1);
@@ -47,13 +48,13 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         crate::back_button(app, ui, t("Înapoi la pagina cărții"));
         ui.separator();
         if ui
-            .add_enabled(page > 1, egui::Button::new("Anterioara"))
-            .on_hover_text("Săgeată stânga")
+            .add_enabled(page > 1, egui::Button::new(t("Anterioara")))
+            .on_hover_text(t("Săgeată stânga"))
             .clicked()
         {
             app.act("reader.prev", json!({}));
         }
-        let label = ui.label("Pagina");
+        let label = ui.label(t("Pagina"));
         let mut edit = page;
         let resp = ui
             .add(egui::DragValue::new(&mut edit).range(1..=pages.max(1)))
@@ -61,16 +62,16 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         if resp.changed() && edit != page {
             app.act("reader.goto", json!({ "page": edit }));
         }
-        ui.label(format!("din {pages}"));
+        ui.label(tf("din {0}", &[&pages]));
         if ui
-            .add_enabled(page < pages, egui::Button::new("Următoarea"))
-            .on_hover_text("Săgeată dreapta")
+            .add_enabled(page < pages, egui::Button::new(t("Următoarea")))
+            .on_hover_text(t("Săgeată dreapta"))
             .clicked()
         {
             app.act("reader.next", json!({}));
         }
         ui.separator();
-        ui.checkbox(&mut app.reader.fit_page, "Toată pagina");
+        ui.checkbox(&mut app.reader.fit_page, t("Toată pagina"));
         ui.separator();
         ui.add(egui::Label::new(egui::RichText::new(book.display_title()).strong()).truncate());
     });
@@ -114,14 +115,14 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
                 ui.spinner();
-                ui.label(format!("Se randează pagina {page}…"));
+                ui.label(tf("Se randează pagina {0}…", &[&page]));
             });
         }
         Some(Err(e)) => {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
-                ui.label(format!("Pagina nu a putut fi afișată: {e}"));
-                if ui.button("Deschide în aplicația externă").clicked() {
+                ui.label(tf("Pagina nu a putut fi afișată: {0}", &[&e]));
+                if ui.button(t("Deschide în aplicația externă")).clicked() {
                     app.act("book.open_external", json!({ "id": book.id }));
                 }
             });
