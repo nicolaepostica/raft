@@ -1,45 +1,66 @@
-# Istoricul bibliotecii (noiembrie 2026)
+# History of the library (November 2026)
 
-## De unde au venit cărțile
+## Where the books came from
 
-| Sursă | Ce s-a luat | Rezultat |
+| Source | What was taken | Result |
 |---|---|---|
-| `/backup/books` (inițial) | 294 de cărți | redenumite în `Titlu_An`, duplicate șterse |
-| `/run/media/black/free/Books` + `Books/files` + seriile „Библиотека Программиста”, „Для профессионалов” | toate cărțile de IT (1474) | 1272 mutate, 202 copii identice șterse |
-| `/run/media/black/free/Books` (a doua rundă, 22.11) | restul cărților, și cele care nu sunt de IT (54) | 49 mutate, 5 copii identice șterse |
-| `/run/media/black/free/pdf` | doar cărțile de IT (18) | mutate; beletristica a rămas acolo |
-| `/run/media/black/free/pdf` (a doua rundă, 22.11) | tot restul: 450 FB2 (beletristică, serii) + 24 PDF | mutate toate; numele FB2 din metadate (titlu + volum + an); 24 de volume duplicate din „Имя нам Легион” eliminate (s-a păstrat varianta mai mare) |
-| `/run/media/black/data/books` | toate cărțile (735) | 568 mutate, 164 copii identice șterse |
+| `/backup/books` (initially) | 294 books | renamed to `Title_Year`, duplicates deleted |
+| `/run/media/black/free/Books` + `Books/files` + the series "Библиотека Программиста", "Для профессионалов" | every IT book (1474) | 1272 moved, 202 identical copies deleted |
+| `/run/media/black/free/Books` (second round, 22.11) | the remaining books, non-IT ones included (54) | 49 moved, 5 identical copies deleted |
+| `/run/media/black/free/pdf` | IT books only (18) | moved; the fiction stayed there |
+| `/run/media/black/free/pdf` (second round, 22.11) | everything else: 450 FB2 (fiction, series) + 24 PDF | all moved; FB2 names from their metadata (title + volume + year); 24 duplicate volumes of "Имя нам Легион" removed (the larger variant was kept) |
+| `/run/media/black/data/books` | every book (735) | 568 moved, 164 identical copies deleted |
 
-## Reguli aplicate
+## Rules applied
 
-- **Nume:** `<titlu>_<an>.<ext>`, titlul în limba cărții (netradus), maximum 200 de octeți.
-- **Duplicate identice** (md5): se păstrează un singur exemplar.
-- **Aceeași carte în mai multe formate:** se păstrează PDF-ul, iar EPUB-ul și DjVu-ul se șterg.
-- **Același titlu și an cu conținut diferit** (`_2`, `_3`): se păstrează varianta fără sufix (verificată că se deschide).
-- **Ce a rămas pe discuri, intenționat:** materialele însoțitoare (cod, „(+code)”, „(+CD)”, `Exemples/`, zip-uri), cursurile video, fișierele care nu sunt cărți (facturi, README, manuale de modem, PDF-urile cu nume de tip hash din `iot/`) și cărțile care nu sunt de IT din `free/Books` și `free/pdf`.
+- **Names:** `<title>_<year>.<ext>`, the title in the book's language (untranslated), at most
+  200 bytes.
+- **Identical duplicates** (md5): a single copy is kept.
+- **The same book in several formats:** the PDF is kept, the EPUB and DjVu are deleted.
+- **Same title and year, different content** (`_2`, `_3`): the variant without a suffix is kept
+  (checked that it opens).
+- **Left on the disks on purpose:** companion material (code, "(+code)", "(+CD)", `Exemples/`,
+  zip files), video courses, files that are not books (invoices, READMEs, modem manuals, the
+  hash-named PDFs in `iot/`) and the non-IT books in `free/Books` and `free/pdf`.
 
-## Jurnale (pentru verificare sau anulare)
+## Logs (to check or undo)
 
-- `/backup/books/.rename_log.tsv`: fiecare redenumire (`vechi<TAB>nou`) și ștergere (`DELETED<TAB>fișier`)
-- `/backup/books/.move_log.tsv`: fiecare mutare (`MV<TAB>sursă<TAB>nume nou`) și duplicat șters (`DUP<TAB>sursă<TAB>exemplarul păstrat`)
+- `/backup/books/.rename_log.tsv`: every rename (`old<TAB>new`) and deletion
+  (`old<TAB><deleted: duplicate of …>`; older entries say `DELETED<TAB>file`)
+- `/backup/books/.move_log.tsv`: every move (`MV<TAB>source<TAB>new name`) and deleted duplicate
+  (`DUP<TAB>source<TAB>the kept copy`)
 - `/run/media/black/free/Books/.rename_log.tsv`, `/run/media/black/free/Books/files/.rename_log.tsv`
-- `/backup/books/.rename_ignore`: fișiere pe care `rename-books` nu le atinge
+- `/backup/books/.rename_ignore`: files `rename-books` leaves alone
 
-## Bug-uri reparate în scripturi
+## Bugs fixed in the scripts
 
-- `rename-books`: titlurile erau traduse în română, de aceea promptul a fost trecut în engleză cu interdicția de a traduce.
-- `rename-books`: eroare la nume prea lungi (Errno 36); acum se trunchiază după octeți, iar o eroare nu mai oprește rularea.
-- `rename-books`: fișierele care aveau deja `_AAAA` în nume erau sărite; s-a adăugat opțiunea `--all`.
-- `rename-books`: se adăuga `_2` când noul nume era chiar numele actual.
-- `build-catalog`: `database is locked` la rularea în paralel; acum firele nu mai ating baza de date.
+- `rename-books`: titles were translated into Romanian, so the prompt was switched to English
+  with a ban on translating.
+- `rename-books`: an error on names that were too long (Errno 36); names are now cut by bytes,
+  and one error no longer stops the run.
+- `rename-books`: files that already had `_YYYY` in their name were skipped; the `--all` option
+  was added.
+- `rename-books`: `_2` was added when the new name was the current name.
+- `build-catalog`: `database is locked` when running in parallel; the worker threads no longer
+  touch the database.
 
-## OCR pentru cărțile scanate (22.11.2026)
+## OCR for scanned books (22.11.2026)
 
-155 de cărți (PDF/DjVu fără strat de text) au primit metadatele din OCR (tesseract, rus+eng, primele 8 pagini):
-- 145 au primit în catalog titlul, autorii, anul și descrierea din textul real;
-- ~60 au fost redenumite: nume transliterate, ani greșiți, iar „Модернизация и ремонт ПК для чайников” era de fapt „C# для чайников”;
-- 6 duplicate au fost șterse: 3 perechi scanat + varianta cu text, MS SQL ×2, Введение в программирование ×2, Схемотехника DjVu + PDF.
+155 books (PDF/DjVu without a text layer) got their metadata from OCR (tesseract, rus+eng, the
+first 8 pages):
+- 145 got the title, authors, year and description from their real text in the catalog;
+- ~60 were renamed: transliterated names, wrong years, and "Модернизация и ремонт ПК для
+  чайников" was in fact "C# для чайников";
+- 6 duplicates were deleted: 3 pairs of a scan + a variant with text, MS SQL ×2,
+  Введение в программирование ×2, Схемотехника DjVu + PDF.
 
-De acum, `rename-books` și `build-catalog` fac OCR automat când o carte nu are text (`ocr()` în `rename-books`).
-**Atenție:** `build-catalog --refresh-ai` reface metadatele; cu OCR-ul integrat rezultatul ar trebui să fie similar, dar corecturile manuale se pierd.
+From then on, `rename-books` and `build-catalog` run OCR automatically when a book has no text
+(`ocr()` in `rename-books`).
+**Note:** `build-catalog --refresh-ai` redoes the metadata; with OCR built in the result should
+be similar. Corrections made in the app are kept (they live in `raft.db`).
+
+## Download-site addresses (23.11.2026)
+
+The page footers of many PDFs carry the site or Telegram channel they came from. They were
+stripped from the indexed text of 451 books (`build-catalog --clean-only`); the PDF files were
+not changed.
