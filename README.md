@@ -1,34 +1,99 @@
 # Raft
 
-Aplicație pentru biblioteca personală de cărți: căutare, filtrare, deschiderea cărții și salvarea progresului de citire.
+A desktop app for a personal book library: search, filters, reading PDF, DjVu, EPUB and FB2,
+reading progress, and hand corrections of the catalog's metadata. Written in Rust with egui.
 
-**Starea actuală (22.11.2026):** biblioteca este curățată și catalogată. Aplicația propriu-zisă încă nu există.
+The library it was built for holds about 2500 books (PDF, FB2, EPUB, DjVu), mostly in English
+and Russian, in one folder with a SQLite catalog next to them.
 
-## Ce există deja
+## What it does
 
-| Ce | Unde |
-|---|---|
-| Toate cărțile (~2500), un singur folder, nume `Titlu_An.ext` | `/backup/books/` |
-| Catalogul (SQLite + căutare full-text) | `/backup/books/catalog.db` |
-| Același catalog în JSON | `/backup/books/catalog.json` |
-| Coperți 400px, `<id>.webp` | `/backup/books/covers/` |
-| Scriptul de redenumire și deduplicare | `scripts/rename-books` (link în `~/.local/bin`) |
-| Scriptul care construiește catalogul | `scripts/build-catalog` (link în `~/.local/bin`) |
+- **Library:** a cover grid with search over title, author, tags, description and book text
+  (full-text, diacritics- and case-insensitive), filters by language, format, years (a
+  two-handle slider), category and data marks, five sort orders, and "continue reading".
+- **Book page:** metadata, description, categories; icons under the cover to read, open in the
+  system's app, show in the folder, change the cover (an image file, a dropped image or a page
+  of the book) and delete the book (to the trash, after a confirmation).
+- **Readers:** PDF and DjVu pages rendered with `pdftoppm` / `ddjvu`; EPUB and FB2 as
+  reflowable text with a table of contents and adjustable letter size. The position is saved.
+- **Metadata corrections:** every field can be corrected by hand; corrections live in the app's
+  own database, so rebuilding the catalog never loses them. Books are marked *edited*,
+  *incomplete* (missing title, authors, year, language, categories or description) or
+  *reviewed*, and can be filtered by those marks and processed one after another.
+- **Interface:** Romanian, English or Russian; light or dark theme (View menu); undo/redo for
+  every change; keyboard shortcuts (Backspace / Alt+← go back, Ctrl+S saves, Ctrl+F searches).
 
-Biblioteca: ~2500 de cărți (PDF, FB2, EPUB, DjVu), în principal în engleză și rusă.
-
-## Adăugarea cărților noi
+## Running
 
 ```bash
-cp carte_noua.pdf /backup/books/
-rename-books --apply          # redenumește în Titlu_An, șterge duplicatele identice
-build-catalog --json          # adaugă în catalog doar ce e nou sau mutat, scoate ce s-a șters
+cargo run --release -p raft -- --library /backup/books
 ```
 
-Pentru `rename-books` și `build-catalog` sunt necesare: `poppler-utils` (pdfinfo, pdftotext, pdftoppm), `djvulibre`, `tesseract` + `tesseract-langpack-rus` (OCR pentru cărțile scanate), Python 3 + Pillow și CLI-ul `claude` (pentru metadatele AI, cu modelul haiku).
+| Option | Meaning |
+|---|---|
+| `--library DIR` | folder with `catalog.db` and `covers/` (default `/backup/books`, or `$RAFT_LIBRARY`) |
+| `--data FILE` | the app's own database: progress, corrections, settings (default `~/.local/share/raft/raft.db`) |
+| `--control PORT` | a local JSON control channel on `127.0.0.1:PORT` (commands, state, screenshots) |
 
-## Documentație
+`RAFT_THEME=light|dark` overrides the saved theme for one run. Rendering pages needs
+`poppler-utils` (`pdftoppm`) and `djvulibre` (`ddjvu`); moving books to the trash needs `gio`.
 
-- [docs/catalog.md](docs/catalog.md): schema `catalog.db`, categoriile, exemple de interogări
-- [docs/plan.md](docs/plan.md): planul aplicației, funcții, variante tehnice, întrebări deschise
-- [docs/history.md](docs/history.md): ce s-a făcut cu biblioteca, de unde au venit cărțile, jurnalele
+`assets/raft.desktop` and `assets/icon.png` are a desktop entry and icon for launchers.
+
+## The library and its catalog
+
+| What | Where |
+|---|---|
+| The books, one flat folder, named `Title_Year.ext` | `/backup/books/` |
+| The catalog (SQLite + full-text search) | `/backup/books/catalog.db` |
+| The same catalog as JSON | `/backup/books/catalog.json` |
+| Covers, 400 px wide, `<id>.webp` | `/backup/books/covers/` |
+| Script that renames books and removes duplicates | `scripts/rename-books` |
+| Script that builds the catalog | `scripts/build-catalog` |
+
+A book's id is the md5 of its file, so renaming or moving a file keeps its cover, progress and
+corrections.
+
+### Adding new books
+
+```bash
+cp new_book.pdf /backup/books/
+rename-books --apply          # rename to Title_Year, delete identical duplicates
+build-catalog --json          # add only what is new or moved, drop what was deleted
+```
+
+`rename-books` and `build-catalog` need `poppler-utils` (pdfinfo, pdftotext, pdftoppm),
+`djvulibre`, `tesseract` + `tesseract-langpack-rus` (OCR for scanned books), Python 3 + Pillow,
+and the `claude` CLI (AI metadata, with the haiku model).
+
+## Development
+
+The workspace is split into layers; a crate depends only on lower ones:
+
+| Crate | Holds |
+|---|---|
+| `raft-doc` | the data model (books, queries, corrections) |
+| `raft-search` | search, filters, facet counts |
+| `raft-catalog`, `raft-store` | reading `catalog.json` / `catalog.db`; the app's own `raft.db` |
+| `raft-render`, `raft-text` | page rendering; EPUB/FB2 parsing |
+| `raft-engine` | the session, the command registry, undo/redo |
+| `raft-ui` | the egui interface, translations, theme |
+| `raft` | the desktop app |
+
+Every user action is a command in `raft-engine` (`cargo run -p raft -- --control 7878`, then
+send `{"method": "commands"}` to list them). The gate before a commit:
+
+```bash
+cargo xtask ci     # fmt, clippy -D warnings, tests, layer checks, wasm build
+```
+
+The colours live in `assets/theme.toml`; `python3 assets/icon.py` redraws the icon from it.
+
+## Documentation
+
+- [docs/catalog.md](docs/catalog.md): the `catalog.db` schema, the categories, example queries
+- [docs/history.md](docs/history.md): how the library was gathered and cleaned, and the logs
+
+## Licence
+
+MIT OR Apache-2.0.
