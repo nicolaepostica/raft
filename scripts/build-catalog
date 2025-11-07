@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""Construiește catalogul bibliotecii: DIR/catalog.db (SQLite) + DIR/covers/<id>.webp.
+"""Builds the library catalog: DIR/catalog.db (SQLite) + DIR/covers/<id>.webp.
 
-Utilizare:
-    build-catalog                    # /backup/books, doar cărțile noi sau mutate
-    build-catalog DIR -j 8           # alt director, 8 cărți în paralel
-    build-catalog --refresh-ai       # recalculează metadatele AI pentru toate cărțile
-    build-catalog --no-ai            # doar metadate din fișier, fără CLI-ul `claude`
-    build-catalog --json             # exportă și DIR/catalog.json
-    build-catalog --clean-only       # doar scoate adresele site-urilor de descărcare din conținut
+Usage:
+    build-catalog                    # /backup/books, only new or moved books
+    build-catalog DIR -j 8           # another folder, 8 books in parallel
+    build-catalog --refresh-ai       # recompute the AI metadata of every book
+    build-catalog --no-ai            # metadata from the files only, without the `claude` CLI
+    build-catalog --json             # also export DIR/catalog.json
+    build-catalog --clean-only       # only strip download-site addresses from the indexed text
 
-Scriptul poate fi rulat de oricâte ori: o carte e identificată după md5-ul conținutului, deci
-redenumirea sau mutarea fișierului nu pierde coperta și metadatele. Cărțile șterse dispar din catalog.
+The script can be run any number of times: a book is identified by the md5 of its content, so
+renaming or moving a file keeps its cover and metadata. Deleted books leave the catalog.
 
 Schema:
     books(id, path, filename, format, size, pages, title, authors, year, language, publisher,
           isbn, categories, tags, description, cover, mtime, added_at, updated_at)
-      - authors / categories / tags sunt liste JSON
-    books_fts  — tabel FTS5 (title, authors, categories, tags, description, content) pentru căutare
-    categories — lista fixă de categorii (slug, nume afișat)
+      - authors / categories / tags are JSON lists
+    books_fts  — FTS5 table (title, authors, categories, tags, description, content) for search
+    categories — the fixed list of categories (slug, display name)
 """
 import argparse, base64, concurrent.futures, datetime, hashlib, importlib.machinery, importlib.util, io, json, os, re
 import shutil, sqlite3, subprocess, sys, tempfile, zipfile
 
 from PIL import Image
 
-# Refolosim extragerea de text/metadate din rename-books (același director).
+# Reuse the text/metadata extraction of rename-books (same folder).
 _rb_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'rename-books')
 _loader = importlib.machinery.SourceFileLoader('rename_books', _rb_path)
 _spec = importlib.util.spec_from_loader('rename_books', _loader)
@@ -103,7 +103,7 @@ def run(cmd, timeout=120):
         return None
 
 
-# ---------- coperți ----------
+# ---------- covers ----------
 
 def save_cover(img_bytes, out):
     im = Image.open(io.BytesIO(img_bytes))
@@ -251,7 +251,7 @@ def title_from_filename(f):
 # ---------- main ----------
 
 def clean_sites(db):
-    """Scoate din conținutul indexat adresele site-urilor de descărcare (subsolul paginilor)."""
+    """Strips download-site addresses (page footers) from the indexed text."""
     rows = db.execute('SELECT rowid, content FROM books_fts').fetchall()
     changed = 0
     for rowid, content in rows:
@@ -267,13 +267,13 @@ def clean_sites(db):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('dir', nargs='?', default='/backup/books')
-    ap.add_argument('-j', type=int, default=8, help='câte cărți în paralel (implicit 8)')
+    ap.add_argument('-j', type=int, default=8, help='books processed in parallel (default 8)')
     ap.add_argument('--model', default='haiku')
     ap.add_argument('--no-ai', action='store_true')
-    ap.add_argument('--refresh-ai', action='store_true', help='recalculează metadatele AI pentru toate cărțile')
-    ap.add_argument('--json', action='store_true', help='exportă și catalog.json')
+    ap.add_argument('--refresh-ai', action='store_true', help='recompute the AI metadata of every book')
+    ap.add_argument('--json', action='store_true', help='also export catalog.json')
     ap.add_argument('--clean-only', action='store_true',
-                    help='doar scoate adresele site-urilor de descărcare din conținutul indexat')
+                    help='only strip download-site addresses from the indexed text')
     a = ap.parse_args()
 
     root = os.path.realpath(a.dir)
@@ -283,14 +283,14 @@ def main():
     db.executescript(SCHEMA)
     db.executemany('INSERT OR REPLACE INTO categories VALUES(?,?)', CATEGORIES.items())
     if a.clean_only:
-        print(f'Conținut curățat de adresele site-urilor la {clean_sites(db)} cărți.')
+        print(f'Download-site addresses stripped from the text of {clean_sites(db)} books.')
         return
 
     files = sorted(f for f in os.listdir(root)
                    if os.path.splitext(f)[1].lower() in EXTS and os.path.isfile(os.path.join(root, f)))
     known = {r[0]: r[1:] for r in db.execute('SELECT path, id, size, mtime, cover FROM books')}
 
-    # 1) identificăm fiecare fișier (md5 doar dacă e nou sau s-a schimbat)
+    # 1) identify every file (md5 only when it is new or changed)
     todo, seen_ids = [], set()
     for f in files:
         p = os.path.join(root, f)
@@ -300,7 +300,7 @@ def main():
             seen_ids.add(k[0])
             continue
         todo.append((f, st))
-    print(f'{len(files)} cărți, {len(todo)} de procesat', flush=True)
+    print(f'{len(files)} books, {len(todo)} to process', flush=True)
 
     def work(item):
         f, st = item
@@ -321,7 +321,7 @@ def main():
         try:
             return work(item)
         except Exception as e:
-            print(f'EROARE la {item[0]}: {e}', flush=True)
+            print(f'ERROR in {item[0]}: {e}', flush=True)
             return None
     done = 0
     with concurrent.futures.ThreadPoolExecutor(a.j) as ex:
@@ -332,10 +332,10 @@ def main():
             f, st, bid, meta, text, res, has_ai, cover, pages = r
             seen_ids.add(bid)
             fmt = os.path.splitext(f)[1].lower().lstrip('.')
-            if has_ai:   # carte cunoscută, doar mutată/redenumită
+            if has_ai:   # a known book, only moved or renamed
                 db.execute('UPDATE books SET path=?, filename=?, size=?, mtime=?, cover=COALESCE(?,cover), '
                            'updated_at=? WHERE id=?', (f, f, st.st_size, st.st_mtime, cover, now(), bid))
-                print(f'[{done}/{len(todo)}] mutată: {f}', flush=True)
+                print(f'[{done}/{len(todo)}] moved: {f}', flush=True)
             else:
                 res = res or {}
                 title = res.get('title') or title_from_filename(f)
@@ -352,14 +352,14 @@ def main():
                 db.execute('INSERT INTO books_fts VALUES(?,?,?,?,?,?,?)', (
                     bid, title, ' '.join(authors), ' '.join(cats), ' '.join(tags),
                     res.get('description') or '', text))
-                flag = '' if res else '  (fără AI)'
-                print(f'[{done}/{len(todo)}] {f}  →  {", ".join(cats)}{flag}{"" if cover else "  (fără copertă)"}',
+                flag = '' if res else '  (no AI)'
+                print(f'[{done}/{len(todo)}] {f}  →  {", ".join(cats)}{flag}{"" if cover else "  (no cover)"}',
                       flush=True)
             if done % 20 == 0:
                 db.commit()
     db.commit()
 
-    # 2) curățăm cărțile care nu mai există
+    # 2) drop the books that no longer exist
     gone = [r[0] for r in db.execute('SELECT id FROM books') if r[0] not in seen_ids]
     for bid in gone:
         db.execute('DELETE FROM books WHERE id=?', (bid,))
@@ -371,11 +371,11 @@ def main():
 
     cleaned = clean_sites(db)
     if cleaned:
-        print(f'Conținut curățat de adresele site-urilor la {cleaned} cărți.')
+        print(f'Download-site addresses stripped from the text of {cleaned} books.')
 
     n = db.execute('SELECT COUNT(*) FROM books').fetchone()[0]
     nc = db.execute('SELECT COUNT(*) FROM books WHERE cover IS NOT NULL').fetchone()[0]
-    print(f'\nCatalog: {n} cărți, {nc} cu copertă, {len(gone)} eliminate. Fișier: {os.path.join(root, "catalog.db")}')
+    print(f'\nCatalog: {n} books, {nc} with a cover, {len(gone)} removed. File: {os.path.join(root, "catalog.db")}')
 
     if a.json:
         db.row_factory = sqlite3.Row
