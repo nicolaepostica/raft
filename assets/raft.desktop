@@ -7,5 +7,5 @@ Comment[ru]=Ваша библиотека книг: поиск, фильтры �
 Exec=raft
 Icon=raft
 Terminal=false
-Categories=Office;Viewer;Education;
+Categories=Office;Viewer;
 StartupWMClass=raft
