@@ -194,7 +194,7 @@ def page_count(path):
     return None
 
 
-# ---------- metadate AI ----------
+# ---------- AI metadata ----------
 
 def ask_ai(meta, text, filename, model):
     if not shutil.which('claude'):
