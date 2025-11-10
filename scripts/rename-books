@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Redenumește cărțile noi după formatul <numele_cartii>_<anul>.<ext> și șterge duplicatele exacte.
+"""Renames new books to <book_title>_<year>.<ext> and deletes exact duplicates.
 
-Utilizare:
-    rename-books                 # simulare în /backup/books (nu modifică nimic)
-    rename-books --apply         # aplică redenumirile și șterge duplicatele identice
-    rename-books DIR --apply     # alt director
-    rename-books --no-ai         # doar euristici, fără CLI-ul `claude`
+Usage:
+    rename-books                 # dry run in /backup/books (changes nothing)
+    rename-books --apply         # apply the renames and delete identical duplicates
+    rename-books DIR --apply     # another folder
+    rename-books --no-ai         # heuristics only, without the `claude` CLI
 
-"Carte nouă" = orice fișier .pdf/.epub/.fb2/.djvu al cărui nume NU se termină deja în _AAAA.ext.
-Fișierele pe care nu vrei să le atingi le treci (câte un nume pe linie) în DIR/.rename_ignore.
-Toate operațiile se adaugă în DIR/.rename_log.tsv.
+"New book" = any .pdf/.epub/.fb2/.djvu file whose name does NOT already end in _YYYY.ext.
+Files you don't want touched go into DIR/.rename_ignore (one name per line).
+Every operation is appended to DIR/.rename_log.tsv.
 """
 import argparse, concurrent.futures, collections, datetime, hashlib, json, os, re, shutil, subprocess, sys, zipfile
 
@@ -27,7 +27,7 @@ def run(cmd, timeout=60):
 
 
 def ocr(path, ext, pages=8):
-    """OCR (tesseract, rus+eng) pe primele pagini: copertă, pagina de titlu, datele ediției."""
+    """OCR (tesseract, rus+eng) of the first pages: cover, title page, edition details."""
     if not shutil.which('tesseract'):
         return ''
     import tempfile
@@ -58,7 +58,7 @@ def strip_sites(text):
 
 
 def extract(path):
-    """Returnează (metadate dict, text din primele pagini)."""
+    """Returns (metadata dict, text of the first pages)."""
     ext = os.path.splitext(path)[1].lower()
     meta, text = {}, ''
     if ext == '.pdf':
@@ -89,7 +89,7 @@ def extract(path):
     elif ext == '.djvu':
         text = run(['djvutxt', '--page=1-10', path], 120)
     if ext in ('.pdf', '.djvu') and len(re.sub(r'\s', '', text)) < 300:
-        text = ocr(path, ext) or text   # carte scanată, fără strat de text
+        text = ocr(path, ext) or text   # scanned book, no text layer
     text = re.sub(r'[ \t]+', ' ', strip_sites(text))
     text = '\n'.join(l.strip() for l in text.splitlines() if l.strip())
     return meta, text[:6000]
@@ -153,7 +153,7 @@ def sanitize(title):
     t = re.sub(r'\s*[.,:;—–]\s+', ' ', title)
     t = re.sub(r'[«»"“”()?*/\\|<>’\'\[\]{}!]', '', t).strip(' .')
     t = re.sub(r'\s+', '_', t)
-    # limita sistemului de fișiere e 255 de octeți (chirilica = 2 octeți/literă); lăsăm loc pentru _AAAA_N.ext
+    # the file system limit is 255 bytes (Cyrillic = 2 bytes per letter); leave room for _YYYY_N.ext
     while len(t.encode('utf8')) > 200 and '_' in t:
         t = t.rsplit('_', 1)[0]
     return t.encode('utf8')[:200].decode('utf8', 'ignore')
@@ -170,12 +170,12 @@ def md5(path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('dir', nargs='?', default='/backup/books')
-    ap.add_argument('--apply', action='store_true', help='aplică modificările (implicit doar simulare)')
-    ap.add_argument('--no-ai', action='store_true', help='nu folosi CLI-ul claude, doar euristici')
-    ap.add_argument('--model', default='haiku', help='modelul pentru claude -p (implicit: haiku)')
+    ap.add_argument('--apply', action='store_true', help='apply the changes (default: dry run only)')
+    ap.add_argument('--no-ai', action='store_true', help='do not use the claude CLI, heuristics only')
+    ap.add_argument('--model', default='haiku', help='model for claude -p (default: haiku)')
     ap.add_argument('--all', action='store_true',
-                    help='prelucrează și fișierele terminate deja în _AAAA, dacă nu au fost redenumite de script (nu apar în jurnal)')
-    ap.add_argument('-j', '--jobs', type=int, default=8, help='câte fișiere se analizează în paralel (implicit: 8)')
+                    help='also process files already ending in _YYYY that the script did not rename (not in the log)')
+    ap.add_argument('-j', '--jobs', type=int, default=8, help='files analysed in parallel (default: 8)')
     a = ap.parse_args()
 
     D = os.path.abspath(a.dir)
@@ -192,10 +192,10 @@ def main():
     new = [f for f in files if os.path.splitext(f)[1].lower() in EXTS and f not in ignore
            and (not DONE_RE.search(f) or (a.all and f not in done_by_script))]
     if not new:
-        print('Nu există cărți noi.')
+        print('No new books.')
         return
 
-    print(f'{len(new)} fișier(e) nou(i). Calculez sumele de control...')
+    print(f'{len(new)} new file(s). Computing checksums...')
     hashes = {}
     for f in files:
         try:
@@ -205,23 +205,23 @@ def main():
 
     taken = {f.lower() for f in files}
     log = open(os.path.join(D, '.rename_log.tsv'), 'a', encoding='utf8') if a.apply else None
-    mode = '' if a.apply else '[simulare] '
+    mode = '' if a.apply else '[dry run] '
 
-    # 1) duplicate exacte
+    # 1) exact duplicates
     analyse = []
     for f in new:
         h = md5(os.path.join(D, f))
         twins = [x for x in hashes.get(h, []) if x != f and os.path.exists(os.path.join(D, x))]
         if twins:
-            print(f'{mode}ȘTERG duplicat identic: {f}  (= {twins[0]})')
+            print(f'{mode}DELETE identical duplicate: {f}  (= {twins[0]})')
             if a.apply:
                 os.remove(os.path.join(D, f))
-                log.write(f'{f}\t<șters: duplicat al {twins[0]}>\n')
+                log.write(f'{f}\t<deleted: duplicate of {twins[0]}>\n')
             hashes[h].remove(f)
         else:
             analyse.append((f, h))
 
-    # 2) titlu + an (în paralel)
+    # 2) title + year (in parallel)
     def propose(item):
         f, h = item
         meta, text = extract(os.path.join(D, f))
@@ -229,51 +229,51 @@ def main():
             return f, h, None, meta['error']
         res = None if a.no_ai else ask_claude(meta, text, f, a.model)
         if res is not None and res.get('is_book') is False:
-            return f, h, None, 'nu pare carte'
+            return f, h, None, 'does not look like a book'
         title = (res or {}).get('title') or guess_title(meta, f)
         year = (res or {}).get('year') or year_from_name(f) or guess_year(meta, text)
         if not year:
-            return f, h, None, f'anul nu a putut fi aflat [titlu: {title}]'
-        return f, h, (str(title), int(year), 'AI' if res else 'euristic'), None
+            return f, h, None, f'the year could not be found [title: {title}]'
+        return f, h, (str(title), int(year), 'AI' if res else 'heuristic'), None
 
-    print(f'Analizez {len(analyse)} fișier(e) cu {a.jobs} în paralel...', flush=True)
+    print(f'Analysing {len(analyse)} file(s), {a.jobs} in parallel...', flush=True)
     with concurrent.futures.ThreadPoolExecutor(a.jobs) as ex:
         results = list(ex.map(propose, analyse))
 
-    # 3) redenumire (secvențial, ca să evităm coliziunile)
+    # 3) rename (one by one, to avoid name collisions)
     skipped = 0
     for f, h, prop, err in results:
         if err:
             skipped += 1
-            print(f'SAR: {f} — {err}')
+            print(f'SKIP: {f} — {err}')
             continue
         title, year, src = prop
         ext = os.path.splitext(f)[1].lower()
         base = f'{sanitize(title)}_{year}'
-        taken.discard(f.lower())  # numele propriu nu e o coliziune
+        taken.discard(f.lower())  # its own name is not a collision
         target, k = base + ext, 2
         while target.lower() in taken:
             target = f'{base}_{k}{ext}'
             k += 1
-        warn = '  ⚠ există deja o carte cu acest nume (conținut diferit) — verifică manual' if k > 2 else ''
+        warn = '  ⚠ a book with this name already exists (different content) — check by hand' if k > 2 else ''
         print(f'{mode}{f}\n    -> {target}  ({src}){warn}')
         if a.apply:
             try:
                 os.rename(os.path.join(D, f), os.path.join(D, target))
             except OSError as e:
                 skipped += 1
-                print(f'    EROARE la redenumire, sar: {e}')
+                print(f'    ERROR while renaming, skipping: {e}')
                 continue
             log.write(f'{f}\t{target}\n')
             log.flush()
         taken.add(target.lower())
     if skipped:
-        print(f'\n{skipped} fișier(e) sărite (vezi „SAR:” mai sus).')
+        print(f'\n{skipped} file(s) skipped (see "SKIP:" above).')
 
     if log:
         log.close()
     if not a.apply:
-        print('\nAceasta a fost o simulare. Rulează cu --apply ca să aplici modificările.')
+        print('\nThis was a dry run. Run with --apply to apply the changes.')
 
 
 if __name__ == '__main__':
