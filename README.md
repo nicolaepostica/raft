@@ -89,11 +89,6 @@ cargo xtask ci     # fmt, clippy -D warnings, tests, layer checks, wasm build
 
 The colours live in `assets/theme.toml`; `python3 assets/icon.py` redraws the icon from it.
 
-## Documentation
-
-- [docs/catalog.md](docs/catalog.md): the `catalog.db` schema, the categories, example queries
-- [docs/history.md](docs/history.md): how the library was gathered and cleaned, and the logs
-
 ## Licence
 
 MIT OR Apache-2.0.
