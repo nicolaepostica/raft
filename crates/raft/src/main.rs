@@ -175,7 +175,11 @@ fn main() -> Result<()> {
     let backend = native::NativeBackend::open(&opts.data)?;
     // The saved library folders; the first run starts with --library (or its default).
     let mut roots = backend.saved_sources()?;
-    let library = opts.library.to_string_lossy().trim_end_matches('/').to_owned();
+    let library = opts
+        .library
+        .to_string_lossy()
+        .trim_end_matches('/')
+        .to_owned();
     if roots.is_empty() || (opts.library_given && !roots.contains(&library)) {
         roots.push(library);
     }
