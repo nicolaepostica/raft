@@ -233,6 +233,21 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("view.language", "Schimbă limba interfeței", view_language)
     },
     CommandSpec {
+        menu: Some("File/Add library folder"),
+        params: r#"{"path": string} (a folder with catalog.db, made by build-catalog DIR)"#,
+        record: false,
+        ..spec("source.add", "Adaugă un folder cu cărți", source_add)
+    },
+    CommandSpec {
+        params: r#"{"path": string} (the folder's files are not touched)"#,
+        record: false,
+        ..spec("source.remove", "Scoate un folder din bibliotecă", source_remove)
+    },
+    CommandSpec {
+        params: r#"{"path": string}"#,
+        ..spec("filter.source.toggle", "Filtru: sursă", toggle_source)
+    },
+    CommandSpec {
         menu: Some("View/Back"),
         shortcut: key("Backspace"),
         also: &[
@@ -461,6 +476,51 @@ fn sort_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let sort: Sort =
         serde_json::from_value(v).map_err(|e| EngineError::BadParams(format!("`sort`: {e}")))?;
     s.state.query.sort = sort;
+    Ok(Value::Null)
+}
+
+/// Longest accepted folder path, in bytes.
+const MAX_PATH: usize = 4096;
+
+fn folder_param(p: &Value) -> Result<String, EngineError> {
+    let path = str(p, "path")?.trim().trim_end_matches('/');
+    if path.is_empty() || path.len() > MAX_PATH || path.chars().any(char::is_control) {
+        return Err(bad("`path` must be a folder path"));
+    }
+    Ok(path.to_owned())
+}
+
+fn source_add(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let root = folder_param(p)?;
+    if s.sources.contains(&root) {
+        return Err(bad(format!("`{root}` is already in the library")));
+    }
+    let catalog = s.backend.open_source(&root).map_err(EngineError::Backend)?;
+    let before = s.catalog.books.len();
+    s.add_source(root.clone(), catalog);
+    let added = s.catalog.books.len() - before;
+    Ok(json!({ "source": root, "books": added }))
+}
+
+fn source_remove(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let root = folder_param(p)?;
+    if !s.sources.contains(&root) {
+        return Err(EngineError::NotFound(format!("source `{root}`")));
+    }
+    s.backend.close_source(&root).map_err(EngineError::Backend)?;
+    if s.current_book().is_some_and(|b| b.source == root) {
+        s.state.route = Route::Library;
+    }
+    s.drop_source(&root);
+    Ok(Value::Null)
+}
+
+fn toggle_source(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let root = folder_param(p)?;
+    if !s.sources.contains(&root) && !s.state.query.filters.sources.contains(&root) {
+        return Err(EngineError::NotFound(format!("source `{root}`")));
+    }
+    toggle(&mut s.state.query.filters.sources, root);
     Ok(Value::Null)
 }
 
