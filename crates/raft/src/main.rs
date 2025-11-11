@@ -13,8 +13,10 @@ use raft_ui::RaftUi;
 /// Command-line options.
 #[derive(Debug)]
 pub struct Options {
-    /// Folder with the books, `catalog.db` and `covers/`.
+    /// Folder with the books, `catalog.db` and `covers/`: the first library folder.
     pub library: PathBuf,
+    /// `--library` or `$RAFT_LIBRARY` was given: make sure that folder is loaded.
+    pub library_given: bool,
     /// The app's own database (reading progress).
     pub data: PathBuf,
     /// Port of the local control channel, if enabled.
@@ -22,14 +24,18 @@ pub struct Options {
 }
 
 fn parse_args() -> Result<Options> {
-    let mut library = std::env::var_os("RAFT_LIBRARY")
-        .map_or_else(|| PathBuf::from("/backup/books"), PathBuf::from);
+    let env_library = std::env::var_os("RAFT_LIBRARY");
+    let mut library_given = env_library.is_some();
+    let mut library = env_library.map_or_else(|| PathBuf::from("/backup/books"), PathBuf::from);
     let mut data = default_data_path();
     let mut control = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--library" => library = args.next().context("--library needs a folder")?.into(),
+            "--library" => {
+                library = args.next().context("--library needs a folder")?.into();
+                library_given = true;
+            }
             "--data" => data = args.next().context("--data needs a file")?.into(),
             "--control" => {
                 let port = args.next().context("--control needs a port")?;
@@ -38,7 +44,8 @@ fn parse_args() -> Result<Options> {
             "-h" | "--help" => {
                 println!(
                     "raft [--library DIR] [--data FILE] [--control PORT]\n\n\
-                     --library DIR    folder with catalog.db and covers/ (default /backup/books, or $RAFT_LIBRARY)\n\
+                     --library DIR    a library folder with catalog.db and covers/, added to the saved ones\n\
+                                      (first run: default /backup/books, or $RAFT_LIBRARY)\n\
                      --data FILE      the app's database (default ~/.local/share/raft/raft.db)\n\
                      --control PORT   enable the local control channel on 127.0.0.1:PORT"
                 );
@@ -49,6 +56,7 @@ fn parse_args() -> Result<Options> {
     }
     Ok(Options {
         library,
+        library_given,
         data,
         control,
     })
