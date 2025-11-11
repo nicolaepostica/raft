@@ -47,7 +47,10 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
         {
             app.act("book.show_in_folder", json!({ "id": id }));
         }
-        let picking = app.picking.as_ref().is_some_and(|(b, _)| *b == id);
+        let picking = app
+            .picking
+            .as_ref()
+            .is_some_and(|(p, _)| *p == crate::Pick::Cover(id.clone()));
         let cover = crate::icon_button(
             ui,
             "🖼",
@@ -57,8 +60,8 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
         );
         egui::Popup::menu(&cover).show(|ui| {
             if ui.button(t("Alege o imagine…")).clicked() {
-                match app.files.pick_image() {
-                    Some(rx) => app.picking = Some((id.clone(), rx)),
+                match app.files.pick_image(t("Alege coperta")) {
+                    Some(rx) => app.picking = Some((crate::Pick::Cover(id.clone()), rx)),
                     None => {
                         app.session.status =
                             Some(t("alegerea fișierelor nu e disponibilă aici").into());
