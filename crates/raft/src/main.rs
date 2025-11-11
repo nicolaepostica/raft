@@ -164,10 +164,25 @@ fn app_icon() -> egui::IconData {
 
 fn main() -> Result<()> {
     let opts = parse_args()?;
-    let backend = native::NativeBackend::open(&opts.library, &opts.data)?;
-    let mut catalog = backend.load_catalog()?;
-    let removed = backend.load_removed()?;
-    catalog.books.retain(|b| !removed.contains(&b.id));
+    let backend = native::NativeBackend::open(&opts.data)?;
+    // The saved library folders; the first run starts with --library (or its default).
+    let mut roots = backend.saved_sources()?;
+    let library = opts.library.to_string_lossy().trim_end_matches('/').to_owned();
+    if roots.is_empty() || (opts.library_given && !roots.contains(&library)) {
+        roots.push(library);
+    }
+    let mut catalog = raft_doc::Catalog::default();
+    let mut sources = Vec::new();
+    for root in roots {
+        // A folder on an unplugged disk is skipped for this run and kept for the next.
+        match backend.open_source(&root) {
+            Ok(c) => {
+                catalog.merge(c);
+                sources.push(root);
+            }
+            Err(e) => eprintln!("raft: library folder skipped: {e}"),
+        }
+    }
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
     // The saved language, else Romanian (the language the app was written in).
@@ -178,11 +193,12 @@ fn main() -> Result<()> {
         Ok("light") => false,
         _ => backend.load_dark()?,
     };
-    let files = native::NativeFiles::new(&opts.library, &opts.data);
+    let files = native::NativeFiles::new(&opts.data);
     let session = Session::new(catalog, progress, Box::new(backend))
         .with_overrides(overrides)
         .with_dark(dark)
-        .with_language(&language);
+        .with_language(&language)
+        .with_sources(sources);
     let ui = RaftUi::new(session, Box::new(files));
 
     let viewport = egui::ViewportBuilder::default()
