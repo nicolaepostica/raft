@@ -38,7 +38,11 @@ pub trait Files {
     }
     /// Opens a file chooser for an image; the path (or `None` if cancelled)
     /// arrives on the channel. `None` when choosing files is not possible.
-    fn pick_image(&self) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+    fn pick_image(&self, _title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        None
+    }
+    /// Opens a folder chooser, like [`Files::pick_image`].
+    fn pick_folder(&self, _title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
         None
     }
 }
@@ -76,7 +80,7 @@ pub struct RaftUi {
     /// The theme last installed in egui (`Some(dark)`).
     themed: Option<bool>,
     /// A cover file chooser that is open, for this book.
-    picking: Option<(BookId, std::sync::mpsc::Receiver<Option<String>>)>,
+    picking: Option<(Pick, std::sync::mpsc::Receiver<Option<String>>)>,
 }
 
 impl RaftUi {
@@ -145,16 +149,21 @@ impl RaftUi {
         self.poll_picker(ui.ctx());
     }
 
-    /// Applies the image chosen in the cover file chooser, once it arrives.
+    /// Applies what was chosen in an open file chooser, once it arrives.
     fn poll_picker(&mut self, ctx: &egui::Context) {
-        let Some((id, rx)) = &self.picking else {
+        let Some((pick, rx)) = &self.picking else {
             return;
         };
         match rx.try_recv() {
             Ok(Some(path)) => {
-                let id = id.clone();
+                let pick = pick.clone();
                 self.picking = None;
-                self.act("book.cover.set", json!({ "id": id, "path": path }));
+                match pick {
+                    Pick::Cover(id) => {
+                        self.act("book.cover.set", json!({ "id": id, "path": path }));
+                    }
+                    Pick::Folder => self.act("source.add", json!({ "path": path })),
+                }
             }
             Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => self.picking = None,
             Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -298,6 +307,25 @@ impl RaftUi {
                 ui.colored_label(ui.visuals().warn_fg_color, status);
             }
         });
+    }
+}
+
+/// What an open file chooser is for.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Pick {
+    /// A new cover for this book.
+    Cover(BookId),
+    /// A library folder to add.
+    Folder,
+}
+
+/// Opens the folder chooser for a new library folder.
+pub(crate) fn add_folder(app: &mut RaftUi) {
+    match app.files.pick_folder(t("Alege folderul bibliotecii")) {
+        Some(rx) => app.picking = Some((Pick::Folder, rx)),
+        None => {
+            app.session.status = Some(t("alegerea fișierelor nu e disponibilă aici").into());
+        }
     }
 }
 
