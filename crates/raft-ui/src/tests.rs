@@ -422,6 +422,34 @@ fn interface_language_changes_from_the_view_menu() {
 }
 
 #[test]
+fn sources_section_lists_folders_and_filters_by_them() {
+    let mut catalog = app().session.catalog().clone();
+    for b in &mut catalog.books {
+        b.source = "/backup/books".into();
+    }
+    if let Some(b) = catalog.books.get_mut(1) {
+        b.source = "/run/media/disk/books2".into();
+    }
+    let session = Session::new(catalog, vec![], Box::new(NullBackend))
+        .with_sources(vec!["/backup/books".into(), "/run/media/disk/books2".into()]);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(
+            |ui, app: &mut RaftUi| app.show(ui),
+            RaftUi::new(session, Box::new(NoFiles)),
+        );
+    h.run();
+    h.get_by_label("Surse");
+    h.get_by_label("books  (1)");
+    h.get_by_label("books2  (1)").click();
+    h.run();
+    assert_eq!(h.state().session.result_count(), 1);
+    h.get_by_label("+").click();
+    h.run();
+    h.get_by_label("alegerea fișierelor nu e disponibilă aici");
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
