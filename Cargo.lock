@@ -2862,6 +2862,7 @@ dependencies = [
  "raft-store",
  "raft-text",
  "raft-ui",
+ "rusqlite",
  "serde_json",
 ]
 
