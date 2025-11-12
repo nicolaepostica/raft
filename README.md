@@ -20,6 +20,10 @@ and Russian, in one folder with a SQLite catalog next to them.
   own database, so rebuilding the catalog never loses them. Books are marked *edited*,
   *incomplete* (missing title, authors, year, language, categories or description) or
   *reviewed*, and can be filtered by those marks and processed one after another.
+- **Several library folders:** add more folders (another disk, an external drive) with
+  File → Add a book folder or the "+" under Sources; each has its own `catalog.db` made by
+  `build-catalog DIR`. They are shown together and can be filtered by folder; the list is
+  remembered, and a folder on an unplugged disk is skipped until it is back.
 - **Interface:** Romanian, English or Russian; light or dark theme (View menu); undo/redo for
   every change; keyboard shortcuts (Backspace / Alt+← go back, Ctrl+S saves, Ctrl+F searches).
 
@@ -31,7 +35,7 @@ cargo run --release -p raft -- --library /backup/books
 
 | Option | Meaning |
 |---|---|
-| `--library DIR` | folder with `catalog.db` and `covers/` (default `/backup/books`, or `$RAFT_LIBRARY`) |
+| `--library DIR` | a library folder with `catalog.db` and `covers/`, added to the saved ones (on the first run the default is `/backup/books`, or `$RAFT_LIBRARY`) |
 | `--data FILE` | the app's own database: progress, corrections, settings (default `~/.local/share/raft/raft.db`) |
 | `--control PORT` | a local JSON control channel on `127.0.0.1:PORT` (commands, state, screenshots) |
 
