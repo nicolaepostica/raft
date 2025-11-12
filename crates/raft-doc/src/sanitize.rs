@@ -35,6 +35,7 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
         filename,
         edited: false,
         reviewed: false,
+        source: String::new(),
     })
 }
 
