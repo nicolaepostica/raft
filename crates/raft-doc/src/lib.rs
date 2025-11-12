@@ -89,6 +89,10 @@ pub struct Book {
     /// Checked by hand: its missing fields are known to be unknowable.
     #[serde(default)]
     pub reviewed: bool,
+    /// The library folder (source) the book was loaded from; `path` and `cover`
+    /// are relative to it.
+    #[serde(default)]
+    pub source: String,
 }
 
 impl Book {
@@ -186,6 +190,20 @@ impl Catalog {
         self.books.iter().find(|b| b.id == id)
     }
 
+    /// Adds another source's books and categories. A book already present (the
+    /// same file, by md5, in two folders) keeps its first copy.
+    pub fn merge(&mut self, other: Catalog) {
+        let known: std::collections::HashSet<BookId> =
+            self.books.iter().map(|b| b.id.clone()).collect();
+        self.books
+            .extend(other.books.into_iter().filter(|b| !known.contains(&b.id)));
+        for c in other.categories {
+            if !self.categories.iter().any(|k| k.slug == c.slug) {
+                self.categories.push(c);
+            }
+        }
+    }
+
     pub fn category_name<'a>(&'a self, slug: &'a str) -> &'a str {
         self.categories
             .iter()
@@ -210,12 +228,16 @@ pub struct Filters {
     /// Books lacking any of these fields.
     #[serde(default)]
     pub missing: BTreeSet<edits::Field>,
+    /// Books from any of these library folders.
+    #[serde(default)]
+    pub sources: BTreeSet<String>,
 }
 
 impl Filters {
     pub fn is_empty(&self) -> bool {
         self.marks.is_empty()
             && self.missing.is_empty()
+            && self.sources.is_empty()
             && self.categories.is_empty()
             && self.languages.is_empty()
             && self.formats.is_empty()
