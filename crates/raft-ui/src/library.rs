@@ -48,6 +48,9 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
 
+        sources(app, ui, &facets, &filters);
+        ui.add_space(6.0);
+
         marks(app, ui, &facets, &filters);
         ui.add_space(6.0);
 
@@ -193,6 +196,60 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
     }
     resp.on_hover_text(t("Trage capetele ca să alegi intervalul de ani"));
     (*min, *max) != (old_min, old_max)
+}
+
+/// The last part of a folder path (`/run/media/x/books` → `books`).
+fn folder_name(path: &str) -> &str {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|n| !n.is_empty())
+        .unwrap_or(path)
+}
+
+/// The "Sources" section: the library folders, each a filter, plus add and remove.
+fn sources(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    facets: &raft_engine::Facets,
+    filters: &raft_doc::Filters,
+) {
+    ui.horizontal(|ui| {
+        ui.strong(t("Surse"));
+        if ui
+            .small_button("+")
+            .on_hover_text(t("Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)"))
+            .clicked()
+        {
+            crate::add_folder(app);
+        }
+    });
+    let roots = app.session.sources().to_vec();
+    for root in &roots {
+        let n = facets
+            .sources
+            .iter()
+            .find(|(s, _)| s == root)
+            .map_or(0, |(_, n)| *n);
+        ui.horizontal(|ui| {
+            let mut on = filters.sources.contains(root);
+            if ui
+                .checkbox(&mut on, format!("{}  ({n})", folder_name(root)))
+                .on_hover_text(root.as_str())
+                .changed()
+            {
+                app.act("filter.source.toggle", json!({ "path": root }));
+            }
+            if roots.len() > 1
+                && ui
+                    .small_button("×")
+                    .on_hover_text(t("Scoate folderul din bibliotecă (fișierele rămân pe disc)"))
+                    .clicked()
+            {
+                app.act("source.remove", json!({ "path": root }));
+            }
+        });
+    }
 }
 
 fn mark_label(m: Mark) -> &'static str {
