@@ -174,6 +174,10 @@ impl UserDb {
                  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                  PRIMARY KEY (book_id, field)
              );
+             CREATE TABLE IF NOT EXISTS sources(
+                 path TEXT PRIMARY KEY,
+                 added_at INTEGER NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS settings(
                  key TEXT PRIMARY KEY,
                  value TEXT NOT NULL
@@ -269,6 +273,30 @@ impl UserDb {
             "DELETE FROM overrides WHERE book_id = ?1 AND field = ?2",
             params![book_id, field.slug()],
         )?;
+        Ok(())
+    }
+
+    /// Library folders, in the order they were added.
+    pub fn load_sources(&self) -> Result<Vec<String>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM sources ORDER BY added_at, rowid")?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Remembers a library folder (kept in place if already known).
+    pub fn save_source(&self, path: &str, at: i64) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO sources(path, added_at) VALUES (?1, ?2)",
+            rusqlite::params![path, at],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_source(&self, path: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM sources WHERE path = ?1", [path])?;
         Ok(())
     }
 
@@ -392,6 +420,17 @@ mod tests {
         assert!(all[0].percent.abs() < f32::EPSILON);
         db.delete_progress("a").unwrap();
         assert!(db.load_progress().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sources_round_trip_in_order() {
+        let db = UserDb::in_memory().unwrap();
+        db.save_source("/backup/books", 5).unwrap();
+        db.save_source("/disk2", 7).unwrap();
+        db.save_source("/backup/books", 9).unwrap();
+        assert_eq!(db.load_sources().unwrap(), vec!["/backup/books", "/disk2"]);
+        db.delete_source("/backup/books").unwrap();
+        assert_eq!(db.load_sources().unwrap(), vec!["/disk2"]);
     }
 
     #[test]
