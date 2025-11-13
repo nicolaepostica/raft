@@ -84,6 +84,26 @@ impl Backend for Recorder {
             .push((b.id.clone(), source.clone()));
         Ok(())
     }
+    fn open_source(&self, root: &str) -> Result<Catalog, String> {
+        if root != "/disk2" {
+            return Err(format!("no catalog.db in {root}"));
+        }
+        let book = |id: &str, title: &str| Book {
+            id: id.into(),
+            title: title.into(),
+            source: root.into(),
+            format: Format::Pdf,
+            ..Book::default()
+        };
+        Ok(Catalog {
+            // "a" is the same file as the first library's: it keeps its first copy.
+            books: vec![book("a", "Rust in Action (copy)"), book("c", "Clean Code")],
+            categories: vec![],
+        })
+    }
+    fn close_source(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
     fn show_in_folder(&self, b: &Book) -> Result<(), String> {
         self.shown
             .lock()
@@ -439,6 +459,36 @@ fn theme_switches_and_is_not_undone() {
     assert!(!s.dark());
     assert!(s.run("view.theme", &json!({"theme": "blue"})).is_err());
     assert_eq!(s.snapshot()["theme"], "light");
+}
+
+#[test]
+fn library_folders_are_added_filtered_and_removed() {
+    let (s, _) = session();
+    let mut s = s.with_sources(vec!["/backup/books".into()]);
+    s.run(
+        "book.edit",
+        &json!({"id": "a", "fields": {"title": "Corrected"}}),
+    )
+    .unwrap();
+    assert!(s.run("source.add", &json!({"path": "/nowhere"})).is_err());
+    let r = s.run("source.add", &json!({"path": "/disk2/"})).unwrap();
+    assert_eq!(r["books"], 1);
+    assert_eq!(s.sources(), ["/backup/books", "/disk2"]);
+    assert_eq!(s.result_count(), 3);
+    // Corrections still apply after the catalog is rebuilt.
+    assert_eq!(s.book("a").unwrap().title, "Corrected");
+    assert!(s.run("source.add", &json!({"path": "/disk2"})).is_err());
+    s.run("filter.source.toggle", &json!({"path": "/disk2"}))
+        .unwrap();
+    assert_eq!(s.results().next().map(|b| b.id.as_str()), Some("c"));
+    s.run("view.book", &json!({"id": "c"})).unwrap();
+    s.run("source.remove", &json!({"path": "/disk2"})).unwrap();
+    assert!(s.book("c").is_none());
+    assert_eq!(s.route(), &Route::Library);
+    assert!(s.query().filters.sources.is_empty());
+    assert_eq!(s.result_count(), 2);
+    assert!(s.run("source.remove", &json!({"path": "/disk2"})).is_err());
+    assert!(s.run("source.add", &json!({"path": "  "})).is_err());
 }
 
 #[test]
