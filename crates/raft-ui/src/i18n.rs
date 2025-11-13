@@ -157,8 +157,16 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Change interface language",
         "Сменить язык интерфейса",
     ),
-    ("Adaugă un folder cu cărți", "Add a book folder", "Добавить папку с книгами"),
-    ("Scoate un folder din bibliotecă", "Remove a folder from the library", "Убрать папку из библиотеки"),
+    (
+        "Adaugă un folder cu cărți",
+        "Add a book folder",
+        "Добавить папку с книгами",
+    ),
+    (
+        "Scoate un folder din bibliotecă",
+        "Remove a folder from the library",
+        "Убрать папку из библиотеки",
+    ),
     ("Filtru: sursă", "Filter: source", "Фильтр: источник"),
     ("Surse", "Sources", "Источники"),
     ("Sursă", "Source", "Источник"),
@@ -172,7 +180,11 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Remove the folder from the library (the files stay on disk)",
         "Убрать папку из библиотеки (файлы останутся на диске)",
     ),
-    ("Alege folderul bibliotecii", "Choose the library folder", "Выберите папку библиотеки"),
+    (
+        "Alege folderul bibliotecii",
+        "Choose the library folder",
+        "Выберите папку библиотеки",
+    ),
     ("Alege coperta", "Choose the cover", "Выберите обложку"),
     // Library.
     ("Filtre", "Filters", "Фильтры"),
