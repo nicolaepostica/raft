@@ -106,9 +106,13 @@ enum Skip {
     Format,
     /// Marks and missing fields.
     Marks,
+    Source,
 }
 
 fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
+    if skip != Skip::Source && !f.sources.is_empty() && !f.sources.contains(&book.source) {
+        return false;
+    }
     if skip != Skip::Marks {
         if !f.marks.iter().all(|m| book.has(*m)) {
             return false;
@@ -232,6 +236,8 @@ pub struct Facets {
     pub marks: Vec<(Mark, usize)>,
     /// Books lacking each field, in form order (same filters as `marks`).
     pub missing: Vec<(Field, usize)>,
+    /// Books per library folder (ignoring the source filter).
+    pub sources: Vec<(String, usize)>,
 }
 
 /// Facet counts for `query`: each facet is counted with every other filter applied.
@@ -244,6 +250,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
     let mut years: Option<(i32, i32)> = None;
     let mut marks: BTreeMap<Mark, usize> = BTreeMap::new();
     let mut missing: BTreeMap<Field, usize> = BTreeMap::new();
+    let mut sources: BTreeMap<String, usize> = BTreeMap::new();
     let no_years = Filters {
         year_min: None,
         year_max: None,
@@ -269,6 +276,9 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         }
         if passes(b, f, Skip::Format) {
             *formats.entry(b.format).or_default() += 1;
+        }
+        if passes(b, f, Skip::Source) {
+            *sources.entry(b.source.clone()).or_default() += 1;
         }
         if passes(b, f, Skip::Marks) {
             for m in Mark::ALL.into_iter().filter(|m| b.has(*m)) {
@@ -298,6 +308,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         years,
         marks: marks.into_iter().collect(),
         missing: missing.into_iter().collect(),
+        sources: sources.into_iter().collect(),
     }
 }
 
@@ -364,6 +375,26 @@ mod tests {
             text: text.into(),
             ..Query::default()
         }
+    }
+
+    #[test]
+    fn filters_and_counts_sources() {
+        let mut c = sample();
+        c.books[0].source = "/a".into();
+        c.books[1].source = "/b".into();
+        c.books[2].source = "/b".into();
+        c.books[3].source = "/a".into();
+        let i = Index::new(&c);
+        let mut query = Query::default();
+        query.filters.sources.insert("/b".into());
+        assert_eq!(search(&c, &i, &query, &[]), vec![2, 1]);
+        let f = facets(&c, &i, &query, &[]);
+        assert_eq!(f.sources, vec![("/a".into(), 2), ("/b".into(), 2)]);
+        assert!(!query.filters.is_empty());
+        let mut merged = Catalog::default();
+        merged.merge(c.clone());
+        merged.merge(c);
+        assert_eq!(merged.books.len(), 4);
     }
 
     #[test]
