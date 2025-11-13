@@ -75,6 +75,15 @@ pub trait Backend: Send {
     fn save_setting(&self, _key: &str, _value: &str) -> Result<(), String> {
         Ok(())
     }
+    /// Opens a library folder (its `catalog.db`), remembers it, and returns its
+    /// books tagged with their source.
+    fn open_source(&self, _root: &str) -> Result<Catalog, String> {
+        Err("adding library folders is not available here".into())
+    }
+    /// Forgets a library folder (its files are not touched).
+    fn close_source(&self, _root: &str) -> Result<(), String> {
+        Err("removing library folders is not available here".into())
+    }
     /// Stores a custom cover for the book (kept apart from the catalog's covers).
     fn set_cover(&self, _book: &Book, _source: &CoverSource) -> Result<(), String> {
         Err("changing covers is not available here".into())
@@ -144,6 +153,8 @@ pub struct Session {
     dark: bool,
     /// Interface language code (`ro`, `en`, `ru`).
     language: String,
+    /// Library folders the books come from, in the order they were added.
+    sources: Vec<String>,
 }
 
 impl Session {
@@ -177,6 +188,7 @@ impl Session {
             cover_revs: BTreeMap::new(),
             dark: false,
             language: "ro".to_owned(),
+            sources: Vec::new(),
         };
         s.refresh();
         s
@@ -185,14 +197,13 @@ impl Session {
     /// Loads the stored metadata corrections (at startup; not an undo step).
     pub fn with_overrides(mut self, overrides: Vec<Override>) -> Self {
         let before = self.state.overrides.clone();
+        // Kept even for books not loaded now: their folder may be added later.
         for o in overrides {
-            if self.positions.contains_key(&o.book_id) {
-                self.state
-                    .overrides
-                    .entry(o.book_id)
-                    .or_default()
-                    .insert(o.field, o.value);
-            }
+            self.state
+                .overrides
+                .entry(o.book_id)
+                .or_default()
+                .insert(o.field, o.value);
         }
         self.apply_overrides(&before);
         self
@@ -236,7 +247,46 @@ impl Session {
     /// Drops a book from the session (after its file was removed).
     pub(crate) fn forget_book(&mut self, id: &str) {
         self.base.books.retain(|b| b.id != id);
-        self.catalog.books.retain(|b| b.id != id);
+        self.rebuild();
+    }
+
+    /// The library folders, in the order they were added.
+    pub fn sources(&self) -> &[String] {
+        &self.sources
+    }
+
+    /// Starts with these library folders (their books are already in the catalog).
+    pub fn with_sources(mut self, sources: Vec<String>) -> Self {
+        self.sources = sources;
+        self
+    }
+
+    /// Adds a folder's books (already tagged with `root`).
+    pub(crate) fn add_source(&mut self, root: String, catalog: Catalog) {
+        self.base.merge(catalog);
+        self.sources.push(root);
+        self.rebuild();
+    }
+
+    /// Drops a folder and its books.
+    pub(crate) fn drop_source(&mut self, root: &str) {
+        self.base.books.retain(|b| b.source != root);
+        self.sources.retain(|s| s != root);
+        self.state.query.filters.sources.remove(root);
+        self.rebuild();
+    }
+
+    /// Recomputes the corrected catalog, positions and index from `base`.
+    fn rebuild(&mut self) {
+        self.catalog = Catalog {
+            books: self
+                .base
+                .books
+                .iter()
+                .map(|b| edits::edited(b, &self.state.overrides))
+                .collect(),
+            categories: self.base.categories.clone(),
+        };
         self.positions = self
             .catalog
             .books
@@ -529,6 +579,7 @@ impl Session {
             "status": self.status,
             "theme": if self.dark { "dark" } else { "light" },
             "language": self.language,
+            "sources": self.sources,
         })
     }
 }
