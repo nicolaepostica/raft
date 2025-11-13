@@ -235,6 +235,9 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         row(t("Editură"), book.publisher.clone().unwrap_or_default());
                         row(t("ISBN"), book.isbn.clone().unwrap_or_default());
                         row(t("Fișier"), book.filename.clone());
+                        if app.session.sources().len() > 1 {
+                            row(t("Sursă"), book.source.clone());
+                        }
                         row(
                             t("Mărime"),
                             format!("{:.1} MB", book.size as f64 / 1_048_576.0),
