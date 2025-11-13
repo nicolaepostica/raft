@@ -241,7 +241,11 @@ static REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         params: r#"{"path": string} (the folder's files are not touched)"#,
         record: false,
-        ..spec("source.remove", "Scoate un folder din bibliotecă", source_remove)
+        ..spec(
+            "source.remove",
+            "Scoate un folder din bibliotecă",
+            source_remove,
+        )
     },
     CommandSpec {
         params: r#"{"path": string}"#,
@@ -507,7 +511,9 @@ fn source_remove(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     if !s.sources.contains(&root) {
         return Err(EngineError::NotFound(format!("source `{root}`")));
     }
-    s.backend.close_source(&root).map_err(EngineError::Backend)?;
+    s.backend
+        .close_source(&root)
+        .map_err(EngineError::Backend)?;
     if s.current_book().is_some_and(|b| b.source == root) {
         s.state.route = Route::Library;
     }
