@@ -96,6 +96,7 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Editare", "Edit", "Правка"),
     ("Vizualizare", "View", "Вид"),
     ("Limba interfeței", "Interface language", "Язык интерфейса"),
+    ("Setări", "Settings", "Настройки"),
     ("Anulează", "Undo", "Отменить"),
     ("Refă", "Redo", "Повторить"),
     ("Caută", "Search", "Найти"),
