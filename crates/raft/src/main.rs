@@ -7,7 +7,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use raft_engine::Session;
+use raft_engine::{Backend, Session};
 use raft_ui::RaftUi;
 
 /// Command-line options.
