@@ -15,31 +15,33 @@ use raft_ui::Files;
 const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 
 pub struct NativeBackend {
-    library: PathBuf,
-    catalog: CatalogDb,
+    /// The open library folders and their catalogs.
+    catalogs: Mutex<Vec<(String, CatalogDb)>>,
     user: UserDb,
     /// Custom covers, next to `raft.db`.
     covers: PathBuf,
 }
 
 impl NativeBackend {
-    pub fn open(library: &Path, data: &Path) -> Result<Self> {
-        let db = library.join("catalog.db");
-        let catalog = CatalogDb::open(&db).with_context(|| format!("opening {}", db.display()))?;
+    pub fn open(data: &Path) -> Result<Self> {
         if let Some(dir) = data.parent() {
             std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
         let user = UserDb::open(data).with_context(|| format!("opening {}", data.display()))?;
         Ok(Self {
-            library: library.to_owned(),
-            catalog,
+            catalogs: Mutex::default(),
             user,
             covers: covers_dir(data),
         })
     }
 
-    pub fn load_catalog(&self) -> Result<Catalog> {
-        Ok(self.catalog.load()?)
+    /// The saved library folders, in the order they were added.
+    pub fn saved_sources(&self) -> Result<Vec<String>> {
+        Ok(self.user.load_sources()?)
+    }
+
+    fn catalogs(&self) -> std::sync::MutexGuard<'_, Vec<(String, CatalogDb)>> {
+        self.catalogs.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn load_progress(&self) -> Result<Vec<Progress>> {
@@ -59,10 +61,14 @@ impl NativeBackend {
     pub fn load_dark(&self) -> Result<bool> {
         Ok(self.user.setting("theme")?.as_deref() == Some("dark"))
     }
+}
 
-    pub fn load_removed(&self) -> Result<std::collections::HashSet<BookId>> {
-        Ok(self.user.load_removed()?.into_iter().collect())
+/// The book's file: its path joined to its library folder.
+pub fn book_file(book: &Book) -> Option<PathBuf> {
+    if book.source.is_empty() {
+        return None;
     }
+    resolve(Path::new(&book.source), &book.path)
 }
 
 /// Joins a catalog path to the library root, refusing paths that escape it.
@@ -76,9 +82,50 @@ pub fn resolve(root: &Path, rel: &str) -> Option<PathBuf> {
 
 impl Backend for NativeBackend {
     fn content_search(&self, text: &str, limit: usize) -> Result<Vec<BookId>, String> {
-        self.catalog
-            .content_search(text, limit)
-            .map_err(|e| e.to_string())
+        let mut hits = Vec::new();
+        for (_, db) in self.catalogs().iter() {
+            hits.extend(db.content_search(text, limit).map_err(|e| e.to_string())?);
+        }
+        Ok(hits)
+    }
+
+    fn open_source(&self, root: &str) -> Result<Catalog, String> {
+        let dir = Path::new(root);
+        if !dir.is_absolute() {
+            return Err(format!("`{root}` is not an absolute folder path"));
+        }
+        if !dir.is_dir() {
+            return Err(format!("folder not found: {root}"));
+        }
+        let path = dir.join("catalog.db");
+        if !path.is_file() {
+            return Err(format!(
+                "{root} has no catalog.db: run `build-catalog {root}` first"
+            ));
+        }
+        let db = CatalogDb::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut catalog = db.load().map_err(|e| format!("{}: {e}", path.display()))?;
+        let removed: std::collections::HashSet<BookId> = self
+            .user
+            .load_removed()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        catalog.books.retain(|b| !removed.contains(&b.id));
+        for b in &mut catalog.books {
+            b.source = root.to_owned();
+        }
+        self.user
+            .save_source(root, self.now())
+            .map_err(|e| e.to_string())?;
+        self.catalogs().push((root.to_owned(), db));
+        Ok(catalog)
+    }
+
+    fn close_source(&self, root: &str) -> Result<(), String> {
+        self.user.delete_source(root).map_err(|e| e.to_string())?;
+        self.catalogs().retain(|(r, _)| r != root);
+        Ok(())
     }
 
     fn save_progress(&self, p: &Progress) -> Result<(), String> {
@@ -90,7 +137,7 @@ impl Backend for NativeBackend {
     }
 
     fn open_external(&self, book: &Book) -> Result<(), String> {
-        let path = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+        let path = book_file(book).ok_or("the book's path is not valid")?;
         if !path.is_file() {
             return Err(format!("file not found: {}", path.display()));
         }
@@ -105,7 +152,7 @@ impl Backend for NativeBackend {
     }
 
     fn show_in_folder(&self, book: &Book) -> Result<(), String> {
-        let path = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+        let path = book_file(book).ok_or("the book's path is not valid")?;
         if !path.is_file() {
             return Err(format!("file not found: {}", path.display()));
         }
@@ -136,7 +183,7 @@ impl Backend for NativeBackend {
     }
 
     fn remove_book(&self, book: &Book) -> Result<(), String> {
-        let path = resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+        let path = book_file(book).ok_or("the book's path is not valid")?;
         // Recorded first: a book whose file is gone must not come back on restart.
         self.user
             .save_removed(&book.id, &book.path, self.now())
@@ -180,8 +227,7 @@ impl Backend for NativeBackend {
             }
             CoverSource::File(path) => read_capped(Path::new(path), MAX_COVER_INPUT)?,
             CoverSource::Page(page) => {
-                let file =
-                    resolve(&self.library, &book.path).ok_or("the book's path is not valid")?;
+                let file = book_file(book).ok_or("the book's path is not valid")?;
                 raft_render::render_page(&file, book.format, *page, COVER_W * 2)
                     .map_err(|e| e.to_string())?
                     .0
@@ -252,6 +298,29 @@ pub fn save_cover(bytes: &[u8], target: &Path) -> Result<(), String> {
     std::fs::rename(&tmp, target).map_err(|e| e.to_string())
 }
 
+/// Runs a zenity file chooser in the background; the chosen path (or `None`)
+/// arrives on the channel.
+fn zenity(args: Vec<String>) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("raft-pick".into())
+        .spawn(move || {
+            let out = std::process::Command::new("zenity")
+                .args(&args)
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output();
+            let path = out
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+                .filter(|p| !p.is_empty());
+            let _ = tx.send(path);
+        })
+        .ok()?;
+    Some(rx)
+}
+
 /// A command with no input and no output (it must not touch the terminal).
 fn quiet(program: &str) -> std::process::Command {
     let mut c = std::process::Command::new(program);
@@ -300,16 +369,14 @@ struct Texts {
 }
 
 pub struct NativeFiles {
-    library: PathBuf,
     covers: PathBuf,
     pages: Arc<Mutex<Pages>>,
     texts: Arc<Mutex<Texts>>,
 }
 
 impl NativeFiles {
-    pub fn new(library: &Path, data: &Path) -> Self {
+    pub fn new(data: &Path) -> Self {
         Self {
-            library: library.to_owned(),
             covers: covers_dir(data),
             pages: Arc::default(),
             texts: Arc::default(),
@@ -330,7 +397,7 @@ impl Files for NativeFiles {
         if texts.running.contains(&book.id) {
             return None;
         }
-        let Some(path) = resolve(&self.library, &book.path) else {
+        let Some(path) = book_file(book) else {
             return Some(Err("the book's path is not valid".into()));
         };
         texts.running.push(book.id.clone());
@@ -365,7 +432,8 @@ impl Files for NativeFiles {
         let custom = custom_cover(&self.covers, &book.id).filter(|p| p.is_file());
         let path = match custom {
             Some(p) => p,
-            None => resolve(&self.library, book.cover.as_deref()?)?,
+            None => resolve(Path::new(&book.source), book.cover.as_deref()?)
+                .filter(|_| !book.source.is_empty())?,
         };
         let meta = std::fs::metadata(&path).ok()?;
         if meta.len() > MAX_COVER_BYTES {
@@ -378,31 +446,21 @@ impl Files for NativeFiles {
         custom_cover(&self.covers, &book.id).is_some_and(|p| p.is_file())
     }
 
-    fn pick_image(&self) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::Builder::new()
-            .name("raft-pick".into())
-            .spawn(move || {
-                let out = std::process::Command::new("zenity")
-                    .args([
-                        "--file-selection",
-                        "--title=Alege coperta",
-                        "--file-filter=Imagini | *.png *.jpg *.jpeg *.webp *.PNG *.JPG *.JPEG *.WEBP",
-                    ])
-                    .stdin(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .output();
-                let path = out
-                    .ok()
-                    .filter(|o| o.status.success())
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-                    .filter(|p| !p.is_empty());
-                let _ = tx.send(path);
-            })
-            .ok()?;
-        Some(rx)
+    fn pick_image(&self, title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        zenity(vec![
+            "--file-selection".into(),
+            format!("--title={title}"),
+            "--file-filter=* | *.png *.jpg *.jpeg *.webp *.PNG *.JPG *.JPEG *.WEBP".into(),
+        ])
     }
 
+    fn pick_folder(&self, title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        zenity(vec![
+            "--file-selection".into(),
+            "--directory".into(),
+            format!("--title={title}"),
+        ])
+    }
     fn page(&self, book: &Book, page: u32, width: u32) -> Option<Result<Vec<u8>, String>> {
         let key: PageKey = (book.id.clone(), page, width);
         let mut pages = self.lock();
@@ -412,7 +470,7 @@ impl Files for NativeFiles {
         if pages.running.contains(&key) || pages.running.len() >= MAX_RENDERS {
             return None;
         }
-        let Some(path) = resolve(&self.library, &book.path) else {
+        let Some(path) = book_file(book) else {
             return Some(Err("the book's path is not valid".into()));
         };
         pages.running.push(key.clone());
@@ -471,6 +529,60 @@ mod tests {
         assert_eq!((saved.width(), saved.height()), (600, 600));
         assert!(save_cover(b"not an image", &target).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A library folder with a catalog.db holding one book, `id`, whose text has `word`.
+    fn library(dir: &Path, id: &str, word: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        let conn = rusqlite::Connection::open(dir.join("catalog.db")).unwrap();
+        conn.execute_batch(&format!(
+            r#"CREATE TABLE books(id TEXT PRIMARY KEY, path TEXT, filename TEXT, format TEXT,
+                 size INTEGER, pages INTEGER, title TEXT, authors TEXT, year INTEGER,
+                 language TEXT, publisher TEXT, isbn TEXT, categories TEXT, tags TEXT,
+                 description TEXT, cover TEXT, mtime REAL, added_at TEXT, updated_at TEXT);
+               CREATE VIRTUAL TABLE books_fts USING fts5(id UNINDEXED, title, authors,
+                 categories, tags, description, content);
+               CREATE TABLE categories(slug TEXT PRIMARY KEY, name TEXT);
+               INSERT INTO books(id, path, filename, format, title)
+                 VALUES ('{id}', '{id}.pdf', '{id}.pdf', 'pdf', 'Book {id}');
+               INSERT INTO books_fts(id, title, content) VALUES ('{id}', 'Book {id}', '{word}');"#
+        ))
+        .unwrap();
+        std::fs::write(dir.join(format!("{id}.pdf")), b"%PDF").unwrap();
+    }
+
+    #[test]
+    fn library_folders_open_search_and_close() {
+        let tmp = std::env::temp_dir().join(format!("raft-sources-{}", std::process::id()));
+        let (one, two) = (tmp.join("one"), tmp.join("two"));
+        library(&one, "aaa", "coroutines");
+        library(&two, "bbb", "monads");
+        let backend = NativeBackend::open(&tmp.join("data/raft.db")).unwrap();
+        let root = |p: &Path| p.to_string_lossy().into_owned();
+        let c1 = backend.open_source(&root(&one)).unwrap();
+        let c2 = backend.open_source(&root(&two)).unwrap();
+        assert_eq!(c2.books.first().map(|b| b.source.clone()), Some(root(&two)));
+        let book = c2.books.first().cloned().unwrap();
+        assert_eq!(book_file(&book), Some(two.join("bbb.pdf")));
+        assert_eq!(backend.content_search("monads", 10).unwrap(), vec!["bbb"]);
+        assert_eq!(
+            backend.content_search("coroutines", 10).unwrap(),
+            vec!["aaa"]
+        );
+        assert_eq!(
+            backend.saved_sources().unwrap(),
+            vec![root(&one), root(&two)]
+        );
+        assert!(
+            backend.open_source(&root(&tmp)).is_err(),
+            "no catalog.db there"
+        );
+        assert!(backend.open_source("relative/dir").is_err());
+        backend.close_source(&root(&one)).unwrap();
+        assert!(backend.content_search("coroutines", 10).unwrap().is_empty());
+        assert_eq!(backend.saved_sources().unwrap(), vec![root(&two)]);
+        assert_eq!(c1.books.len(), 1);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
