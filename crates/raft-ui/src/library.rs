@@ -218,7 +218,9 @@ fn sources(
         ui.strong(t("Surse"));
         if ui
             .small_button("+")
-            .on_hover_text(t("Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)"))
+            .on_hover_text(t(
+                "Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)",
+            ))
             .clicked()
         {
             crate::add_folder(app);
@@ -243,7 +245,9 @@ fn sources(
             if roots.len() > 1
                 && ui
                     .small_button("×")
-                    .on_hover_text(t("Scoate folderul din bibliotecă (fișierele rămân pe disc)"))
+                    .on_hover_text(t(
+                        "Scoate folderul din bibliotecă (fișierele rămân pe disc)",
+                    ))
                     .clicked()
             {
                 app.act("source.remove", json!({ "path": root }));
