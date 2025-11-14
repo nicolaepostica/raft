@@ -430,8 +430,10 @@ fn sources_section_lists_folders_and_filters_by_them() {
     if let Some(b) = catalog.books.get_mut(1) {
         b.source = "/run/media/disk/books2".into();
     }
-    let session = Session::new(catalog, vec![], Box::new(NullBackend))
-        .with_sources(vec!["/backup/books".into(), "/run/media/disk/books2".into()]);
+    let session = Session::new(catalog, vec![], Box::new(NullBackend)).with_sources(vec![
+        "/backup/books".into(),
+        "/run/media/disk/books2".into(),
+    ]);
     let mut h = Harness::builder()
         .with_size(egui::vec2(1100.0, 750.0))
         .build_ui_state(
