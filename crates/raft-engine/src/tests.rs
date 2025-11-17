@@ -523,7 +523,8 @@ fn library_folders_are_disabled_renamed_and_moved() {
     for b in &mut books.books {
         b.source = "/backup/books".into();
     }
-    let mut s = Session::new(books, vec![], Box::new(r.clone())).with_sources(vec!["/backup/books"]);
+    let mut s =
+        Session::new(books, vec![], Box::new(r.clone())).with_sources(vec!["/backup/books"]);
     let titles = |s: &Session| -> Vec<String> {
         let mut t: Vec<String> = s.catalog().books.iter().map(|b| b.title.clone()).collect();
         t.sort();
@@ -536,8 +537,11 @@ fn library_folders_are_disabled_renamed_and_moved() {
     s.run("view.book", &json!({"id": "b"})).unwrap();
 
     // Off: its books go, and the copy of "a" in the other folder shows instead.
-    s.run("source.enable", &json!({"path": "/backup/books", "enabled": false}))
-        .unwrap();
+    s.run(
+        "source.enable",
+        &json!({"path": "/backup/books", "enabled": false}),
+    )
+    .unwrap();
     assert_eq!(titles(&s), ["Clean Code", "Rust in Action (copy)"]);
     assert_eq!(s.route(), &Route::Library);
     assert!(s.query().filters.sources.is_empty());
@@ -548,10 +552,17 @@ fn library_folders_are_disabled_renamed_and_moved() {
     );
     // Only the added folder was saved by this session; the switch saved the other.
     let saved = r.sources.lock().unwrap().clone();
-    assert!(saved.iter().any(|s| s.path == "/backup/books" && !s.enabled));
+    assert!(
+        saved
+            .iter()
+            .any(|s| s.path == "/backup/books" && !s.enabled)
+    );
 
     // On again, but the folder cannot be opened now: it stays on, unavailable.
-    let e = s.run("source.enable", &json!({"path": "/backup/books", "enabled": true}));
+    let e = s.run(
+        "source.enable",
+        &json!({"path": "/backup/books", "enabled": true}),
+    );
     assert!(e.is_err());
     assert!(matches!(
         s.sources().first().map(|e| &e.status),
@@ -561,13 +572,19 @@ fn library_folders_are_disabled_renamed_and_moved() {
 
     // Moved to a folder that opens: loaded again, at its old place in the list.
     assert!(
-        s.run("source.edit", &json!({"path": "/backup/books", "new_path": "/disk2"}))
-            .is_err(),
+        s.run(
+            "source.edit",
+            &json!({"path": "/backup/books", "new_path": "/disk2"})
+        )
+        .is_err(),
         "already in the library"
     );
     assert!(
-        s.run("source.edit", &json!({"path": "/backup/books", "new_path": "/nowhere"}))
-            .is_err()
+        s.run(
+            "source.edit",
+            &json!({"path": "/backup/books", "new_path": "/nowhere"})
+        )
+        .is_err()
     );
     s.run(
         "source.edit",
@@ -586,13 +603,19 @@ fn library_folders_are_disabled_renamed_and_moved() {
     assert_eq!(saved.first().map(|s| s.name.as_str()), Some("Old disk"));
 
     assert!(
-        s.run("source.edit", &json!({"path": "/disk2", "name": "x".repeat(201)}))
-            .is_err()
+        s.run(
+            "source.edit",
+            &json!({"path": "/disk2", "name": "x".repeat(201)})
+        )
+        .is_err()
     );
     assert!(s.run("source.enable", &json!({"path": "/disk2"})).is_err());
     assert!(
-        s.run("source.enable", &json!({"path": "/nowhere", "enabled": true}))
-            .is_err()
+        s.run(
+            "source.enable",
+            &json!({"path": "/nowhere", "enabled": true})
+        )
+        .is_err()
     );
     s.run("source.remove", &json!({"path": "/disk3"})).unwrap();
     assert_eq!(r.sources.lock().unwrap().len(), 1);
