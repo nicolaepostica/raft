@@ -8,7 +8,7 @@ use std::path::Path;
 
 use raft_doc::edits::{Field, Override};
 use raft_doc::sanitize::{BookParts, book_from_parts, json_list};
-use raft_doc::{BookId, Catalog, Category, Progress};
+use raft_doc::{BookId, Catalog, Category, Progress, Source};
 use rusqlite::{Connection, OpenFlags, params};
 
 /// Most books loaded from the catalog.
