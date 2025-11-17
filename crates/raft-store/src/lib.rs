@@ -176,7 +176,9 @@ impl UserDb {
              );
              CREATE TABLE IF NOT EXISTS sources(
                  path TEXT PRIMARY KEY,
-                 added_at INTEGER NOT NULL
+                 added_at INTEGER NOT NULL,
+                 name TEXT NOT NULL DEFAULT '',
+                 enabled INTEGER NOT NULL DEFAULT 1
              );
              CREATE TABLE IF NOT EXISTS settings(
                  key TEXT PRIMARY KEY,
@@ -188,6 +190,19 @@ impl UserDb {
                  removed_at INTEGER NOT NULL
              );",
         )?;
+        // Databases made before sources had a name and an on/off switch.
+        let columns: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('sources')")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        if !columns.iter().any(|c| c == "name") {
+            conn.execute_batch("ALTER TABLE sources ADD COLUMN name TEXT NOT NULL DEFAULT ''")?;
+        }
+        if !columns.iter().any(|c| c == "enabled") {
+            conn.execute_batch(
+                "ALTER TABLE sources ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+            )?;
+        }
         Ok(Self { conn })
     }
 
@@ -277,20 +292,34 @@ impl UserDb {
     }
 
     /// Library folders, in the order they were added.
-    pub fn load_sources(&self) -> Result<Vec<String>, StoreError> {
+    pub fn load_sources(&self) -> Result<Vec<Source>, StoreError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT path FROM sources ORDER BY added_at, rowid")?;
-        let rows = stmt.query_map([], |r| r.get(0))?;
+            .prepare("SELECT path, name, enabled FROM sources ORDER BY added_at, rowid")?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Source {
+                path: r.get(0)?,
+                name: r.get(1)?,
+                enabled: r.get::<_, i64>(2)? != 0,
+            })
+        })?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// Remembers a library folder (kept in place if already known).
-    pub fn save_source(&self, path: &str, at: i64) -> Result<(), StoreError> {
+    /// Remembers a library folder, or updates its name and switch (it keeps its place).
+    pub fn save_source(&self, source: &Source, at: i64) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT OR IGNORE INTO sources(path, added_at) VALUES (?1, ?2)",
-            rusqlite::params![path, at],
+            "INSERT INTO sources(path, added_at, name, enabled) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(path) DO UPDATE SET name = excluded.name, enabled = excluded.enabled",
+            params![source.path, at, source.name, i64::from(source.enabled)],
         )?;
+        Ok(())
+    }
+
+    /// Points a remembered folder to a new path, keeping its place in the list.
+    pub fn move_source(&self, from: &str, to: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("UPDATE sources SET path = ?2 WHERE path = ?1", [from, to])?;
         Ok(())
     }
 
@@ -425,12 +454,37 @@ mod tests {
     #[test]
     fn sources_round_trip_in_order() {
         let db = UserDb::in_memory().unwrap();
-        db.save_source("/backup/books", 5).unwrap();
-        db.save_source("/disk2", 7).unwrap();
-        db.save_source("/backup/books", 9).unwrap();
-        assert_eq!(db.load_sources().unwrap(), vec!["/backup/books", "/disk2"]);
-        db.delete_source("/backup/books").unwrap();
-        assert_eq!(db.load_sources().unwrap(), vec!["/disk2"]);
+        db.save_source(&Source::new("/backup/books"), 5).unwrap();
+        db.save_source(&Source::new("/disk2"), 7).unwrap();
+        let renamed = Source {
+            name: "Old disk".into(),
+            enabled: false,
+            ..Source::new("/backup/books")
+        };
+        db.save_source(&renamed, 9).unwrap();
+        assert_eq!(
+            db.load_sources().unwrap(),
+            vec![renamed.clone(), Source::new("/disk2")]
+        );
+        db.move_source("/backup/books", "/mnt/books").unwrap();
+        assert_eq!(
+            db.load_sources().unwrap().first().map(|s| s.path.as_str()),
+            Some("/mnt/books")
+        );
+        db.delete_source("/mnt/books").unwrap();
+        assert_eq!(db.load_sources().unwrap(), vec![Source::new("/disk2")]);
+    }
+
+    #[test]
+    fn old_sources_table_gets_the_new_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sources(path TEXT PRIMARY KEY, added_at INTEGER NOT NULL);
+             INSERT INTO sources VALUES ('/backup/books', 1);",
+        )
+        .unwrap();
+        let db = UserDb::init(conn).unwrap();
+        assert_eq!(db.load_sources().unwrap(), vec![Source::new("/backup/books")]);
     }
 
     #[test]
