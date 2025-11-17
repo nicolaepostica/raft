@@ -517,6 +517,100 @@ fn library_folders_are_added_filtered_and_removed() {
 }
 
 #[test]
+fn library_folders_are_disabled_renamed_and_moved() {
+    let r = Recorder::default();
+    let mut books = catalog();
+    for b in &mut books.books {
+        b.source = "/backup/books".into();
+    }
+    let mut s = Session::new(books, vec![], Box::new(r.clone())).with_sources(vec!["/backup/books"]);
+    let titles = |s: &Session| -> Vec<String> {
+        let mut t: Vec<String> = s.catalog().books.iter().map(|b| b.title.clone()).collect();
+        t.sort();
+        t
+    };
+    s.run("source.add", &json!({"path": "/disk2"})).unwrap();
+    assert_eq!(titles(&s), ["Clean Code", "Rust in Action", "Война и мир"]);
+    s.run("filter.source.toggle", &json!({"path": "/backup/books"}))
+        .unwrap();
+    s.run("view.book", &json!({"id": "b"})).unwrap();
+
+    // Off: its books go, and the copy of "a" in the other folder shows instead.
+    s.run("source.enable", &json!({"path": "/backup/books", "enabled": false}))
+        .unwrap();
+    assert_eq!(titles(&s), ["Clean Code", "Rust in Action (copy)"]);
+    assert_eq!(s.route(), &Route::Library);
+    assert!(s.query().filters.sources.is_empty());
+    assert_eq!(s.sources().len(), 2);
+    assert_eq!(
+        s.sources().first().map(|e| e.status.clone()),
+        Some(crate::SourceStatus::Disabled)
+    );
+    // Only the added folder was saved by this session; the switch saved the other.
+    let saved = r.sources.lock().unwrap().clone();
+    assert!(saved.iter().any(|s| s.path == "/backup/books" && !s.enabled));
+
+    // On again, but the folder cannot be opened now: it stays on, unavailable.
+    let e = s.run("source.enable", &json!({"path": "/backup/books", "enabled": true}));
+    assert!(e.is_err());
+    assert!(matches!(
+        s.sources().first().map(|e| &e.status),
+        Some(crate::SourceStatus::Unavailable(_))
+    ));
+    assert!(s.sources().first().is_some_and(|e| e.source.enabled));
+
+    // Moved to a folder that opens: loaded again, at its old place in the list.
+    assert!(
+        s.run("source.edit", &json!({"path": "/backup/books", "new_path": "/disk2"}))
+            .is_err(),
+        "already in the library"
+    );
+    assert!(
+        s.run("source.edit", &json!({"path": "/backup/books", "new_path": "/nowhere"}))
+            .is_err()
+    );
+    s.run(
+        "source.edit",
+        &json!({"path": "/backup/books", "new_path": "/disk3/", "name": "  Old disk "}),
+    )
+    .unwrap();
+    let first = s.sources().first().cloned().unwrap();
+    assert_eq!(first.source.path, "/disk3");
+    assert_eq!(first.source.display_name(), "Old disk");
+    assert!(first.loaded());
+    assert_eq!(s.source_name("/disk3"), "Old disk");
+    assert_eq!(s.source_name("/disk2"), "disk2");
+    assert_eq!(s.source_books("/disk3"), 2);
+    let saved = r.sources.lock().unwrap().clone();
+    assert_eq!(saved.first().map(|s| s.path.as_str()), Some("/disk3"));
+    assert_eq!(saved.first().map(|s| s.name.as_str()), Some("Old disk"));
+
+    assert!(
+        s.run("source.edit", &json!({"path": "/disk2", "name": "x".repeat(201)}))
+            .is_err()
+    );
+    assert!(s.run("source.enable", &json!({"path": "/disk2"})).is_err());
+    assert!(
+        s.run("source.enable", &json!({"path": "/nowhere", "enabled": true}))
+            .is_err()
+    );
+    s.run("source.remove", &json!({"path": "/disk3"})).unwrap();
+    assert_eq!(r.sources.lock().unwrap().len(), 1);
+    assert_eq!(s.sources().len(), 1);
+}
+
+#[test]
+fn settings_window_opens_and_closes_without_undo() {
+    let (mut s, _) = session();
+    s.run("view.settings", &Value::Null).unwrap();
+    assert!(s.settings_open());
+    assert_eq!(s.snapshot()["settings"], true);
+    assert!(s.run("edit.undo", &Value::Null).is_err());
+    s.run("view.settings", &json!({"open": false})).unwrap();
+    assert!(!s.settings_open());
+}
+
+#[test]
 fn edits_are_validated_and_reset() {
     let (mut s, _) = session();
     let bad = [
