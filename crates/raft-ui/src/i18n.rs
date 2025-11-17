@@ -182,6 +182,53 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Убрать папку из библиотеки (файлы останутся на диске)",
     ),
     (
+        "Activează / dezactivează un folder",
+        "Enable / disable a folder",
+        "Включить / выключить папку",
+    ),
+    (
+        "Modifică un folder cu cărți",
+        "Change a book folder",
+        "Изменить папку с книгами",
+    ),
+    // Settings window.
+    ("Aspect", "Appearance", "Внешний вид"),
+    ("Temă", "Theme", "Тема"),
+    ("Albă", "Light", "Светлая"),
+    ("Întunecată", "Dark", "Тёмная"),
+    ("Surse de cărți", "Book sources", "Источники книг"),
+    (
+        "Folderele cu cărți (fiecare cu catalog.db făcut de build-catalog). \
+             Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
+        "The book folders (each with a catalog.db made by build-catalog). \
+             A disabled folder stays in the list, but its books are not shown.",
+        "Папки с книгами (в каждой catalog.db от build-catalog). \
+             Выключенная папка остаётся в списке, но её книги не показываются.",
+    ),
+    ("Niciun folder încă.", "No folders yet.", "Папок пока нет."),
+    ("Adaugă un folder…", "Add a folder…", "Добавить папку…"),
+    (
+        "Activează sau dezactivează folderul",
+        "Enable or disable the folder",
+        "Включить или выключить папку",
+    ),
+    ("{0} cărți", "{0} books", "книг: {0}"),
+    ("dezactivat", "disabled", "выключена"),
+    ("indisponibil", "unavailable", "недоступна"),
+    ("Reîncearcă", "Try again", "Повторить"),
+    ("Schimbă folderul…", "Change folder…", "Сменить папку…"),
+    (
+        "Pentru un folder mutat: cărțile își păstrează progresul și corecturile",
+        "For a moved folder: the books keep their progress and corrections",
+        "Для перемещённой папки: книги сохранят прогресс и исправления",
+    ),
+    ("Scoate", "Remove", "Убрать"),
+    (
+        "Toate folderele, în setări",
+        "All the folders, in the settings",
+        "Все папки — в настройках",
+    ),
+    (
         "Alege folderul bibliotecii",
         "Choose the library folder",
         "Выберите папку библиотеки",
