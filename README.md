@@ -22,10 +22,13 @@ and Russian, in one folder with a SQLite catalog next to them.
   *reviewed*, and can be filtered by those marks and processed one after another.
 - **Several library folders:** add more folders (another disk, an external drive) with
   File → Add a book folder or the "+" under Sources; each has its own `catalog.db` made by
-  `build-catalog DIR`. They are shown together and can be filtered by folder; the list is
-  remembered, and a folder on an unplugged disk is skipped until it is back.
-- **Interface:** Romanian, English or Russian; light or dark theme (View menu); undo/redo for
-  every change; keyboard shortcuts (Backspace / Alt+← go back, Ctrl+S saves, Ctrl+F searches).
+  `build-catalog DIR`. They are shown together and can be filtered by folder. In File →
+  Settings (Ctrl+,) every folder can be renamed, switched off (its books are hidden, it stays
+  in the list), pointed to a new place after a move (progress and corrections stay) or
+  removed; a folder on an unplugged disk shows as unavailable and loads again when it is back.
+- **Interface:** Romanian, English or Russian, light or dark theme (both in File → Settings);
+  undo/redo for every change; keyboard shortcuts (Backspace / Alt+← go back, Ctrl+S saves,
+  Ctrl+F searches, Ctrl+, opens the settings).
 
 ## Running
 
