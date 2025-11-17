@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use raft_doc::edits::{Field, Override};
-use raft_doc::{Book, BookId, Catalog, Progress};
+use raft_doc::{Book, BookId, Catalog, Progress, Source};
 use raft_engine::{Backend, CoverSource};
 use raft_store::{CatalogDb, UserDb};
 use raft_text::TextBook;
@@ -36,7 +36,7 @@ impl NativeBackend {
     }
 
     /// The saved library folders, in the order they were added.
-    pub fn saved_sources(&self) -> Result<Vec<String>> {
+    pub fn saved_sources(&self) -> Result<Vec<Source>> {
         Ok(self.user.load_sources()?)
     }
 
@@ -115,17 +115,29 @@ impl Backend for NativeBackend {
         for b in &mut catalog.books {
             b.source = root.to_owned();
         }
-        self.user
-            .save_source(root, self.now())
-            .map_err(|e| e.to_string())?;
-        self.catalogs().push((root.to_owned(), db));
+        let mut catalogs = self.catalogs();
+        catalogs.retain(|(r, _)| r != root);
+        catalogs.push((root.to_owned(), db));
         Ok(catalog)
     }
 
     fn close_source(&self, root: &str) -> Result<(), String> {
-        self.user.delete_source(root).map_err(|e| e.to_string())?;
         self.catalogs().retain(|(r, _)| r != root);
         Ok(())
+    }
+
+    fn save_source(&self, source: &Source) -> Result<(), String> {
+        self.user
+            .save_source(source, self.now())
+            .map_err(|e| e.to_string())
+    }
+
+    fn forget_source(&self, root: &str) -> Result<(), String> {
+        self.user.delete_source(root).map_err(|e| e.to_string())
+    }
+
+    fn move_source(&self, from: &str, to: &str) -> Result<(), String> {
+        self.user.move_source(from, to).map_err(|e| e.to_string())
     }
 
     fn save_progress(&self, p: &Progress) -> Result<(), String> {
