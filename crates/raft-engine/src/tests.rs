@@ -599,8 +599,8 @@ fn library_folders_are_disabled_renamed_and_moved() {
     assert_eq!(s.source_name("/disk2"), "disk2");
     assert_eq!(s.source_books("/disk3"), 2);
     let saved = r.sources.lock().unwrap().clone();
-    assert_eq!(saved.first().map(|s| s.path.as_str()), Some("/disk3"));
-    assert_eq!(saved.first().map(|s| s.name.as_str()), Some("Old disk"));
+    assert!(saved.iter().any(|s| s.path == "/disk3" && s.name == "Old disk"));
+    assert!(!saved.iter().any(|s| s.path == "/backup/books"));
 
     assert!(
         s.run(
