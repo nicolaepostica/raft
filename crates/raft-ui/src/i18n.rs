@@ -198,12 +198,9 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Întunecată", "Dark", "Тёмная"),
     ("Surse de cărți", "Book sources", "Источники книг"),
     (
-        "Folderele cu cărți (fiecare cu catalog.db făcut de build-catalog). \
-             Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
-        "The book folders (each with a catalog.db made by build-catalog). \
-             A disabled folder stays in the list, but its books are not shown.",
-        "Папки с книгами (в каждой catalog.db от build-catalog). \
-             Выключенная папка остаётся в списке, но её книги не показываются.",
+        "Folderele cu cărți (fiecare cu catalog.db făcut de build-catalog). Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
+        "The book folders (each with a catalog.db made by build-catalog). A disabled folder stays in the list, but its books are not shown.",
+        "Папки с книгами (в каждой catalog.db от build-catalog). Выключенная папка остаётся в списке, но её книги не показываются.",
     ),
     ("Niciun folder încă.", "No folders yet.", "Папок пока нет."),
     ("Adaugă un folder…", "Add a folder…", "Добавить папку…"),
@@ -624,6 +621,7 @@ mod tests {
             include_str!("edit.rs"),
             include_str!("library.rs"),
             include_str!("reader.rs"),
+            include_str!("settings.rs"),
             include_str!("text_reader.rs"),
         ];
         let mut keys = Vec::new();
