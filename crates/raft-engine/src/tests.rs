@@ -20,6 +20,8 @@ struct Recorder {
     removed: Arc<Mutex<Vec<String>>>,
     shown: Arc<Mutex<Vec<String>>>,
     covers: Arc<Mutex<Vec<(String, crate::CoverSource)>>>,
+    /// The remembered folders, as `save_source` / `move_source` / `forget_source` left them.
+    sources: Arc<Mutex<Vec<raft_doc::Source>>>,
 }
 
 impl Backend for Recorder {
@@ -84,8 +86,28 @@ impl Backend for Recorder {
             .push((b.id.clone(), source.clone()));
         Ok(())
     }
+    fn save_source(&self, src: &raft_doc::Source) -> Result<(), String> {
+        let mut all = self.sources.lock().unwrap_or_else(|e| e.into_inner());
+        match all.iter_mut().find(|s| s.path == src.path) {
+            Some(s) => *s = src.clone(),
+            None => all.push(src.clone()),
+        }
+        Ok(())
+    }
+    fn forget_source(&self, root: &str) -> Result<(), String> {
+        let mut all = self.sources.lock().unwrap_or_else(|e| e.into_inner());
+        all.retain(|s| s.path != root);
+        Ok(())
+    }
+    fn move_source(&self, from: &str, to: &str) -> Result<(), String> {
+        let mut all = self.sources.lock().unwrap_or_else(|e| e.into_inner());
+        for s in all.iter_mut().filter(|s| s.path == from) {
+            s.path = to.into();
+        }
+        Ok(())
+    }
     fn open_source(&self, root: &str) -> Result<Catalog, String> {
-        if root != "/disk2" {
+        if root != "/disk2" && root != "/disk3" {
             return Err(format!("no catalog.db in {root}"));
         }
         let book = |id: &str, title: &str| Book {
@@ -464,7 +486,7 @@ fn theme_switches_and_is_not_undone() {
 #[test]
 fn library_folders_are_added_filtered_and_removed() {
     let (s, _) = session();
-    let mut s = s.with_sources(vec!["/backup/books".into()]);
+    let mut s = s.with_sources(vec!["/backup/books"]);
     s.run(
         "book.edit",
         &json!({"id": "a", "fields": {"title": "Corrected"}}),
@@ -473,7 +495,10 @@ fn library_folders_are_added_filtered_and_removed() {
     assert!(s.run("source.add", &json!({"path": "/nowhere"})).is_err());
     let r = s.run("source.add", &json!({"path": "/disk2/"})).unwrap();
     assert_eq!(r["books"], 1);
-    assert_eq!(s.sources(), ["/backup/books", "/disk2"]);
+    let paths = |s: &Session| -> Vec<String> {
+        s.sources().iter().map(|e| e.source.path.clone()).collect()
+    };
+    assert_eq!(paths(&s), ["/backup/books", "/disk2"]);
     assert_eq!(s.result_count(), 3);
     // Corrections still apply after the catalog is rebuilt.
     assert_eq!(s.book("a").unwrap().title, "Corrected");
