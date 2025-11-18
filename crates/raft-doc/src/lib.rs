@@ -178,6 +178,48 @@ pub struct Category {
     pub name: String,
 }
 
+/// A library folder the books come from, as the user configured it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Source {
+    /// Absolute folder path, without a trailing `/`; holds `catalog.db`.
+    pub path: String,
+    /// Name shown instead of the folder's own name (empty = the folder's name).
+    #[serde(default)]
+    pub name: String,
+    /// Disabled folders stay in the list but their books are not loaded.
+    pub enabled: bool,
+}
+
+impl Source {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            name: String::new(),
+            enabled: true,
+        }
+    }
+
+    /// The name to show: the given one, else the folder's last component.
+    pub fn display_name(&self) -> &str {
+        let name = self.name.trim();
+        if !name.is_empty() {
+            return name;
+        }
+        self.path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .filter(|n| !n.is_empty())
+            .unwrap_or(&self.path)
+    }
+}
+
+impl From<&str> for Source {
+    fn from(path: &str) -> Self {
+        Self::new(path)
+    }
+}
+
 /// The whole read-only catalog.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Catalog {
