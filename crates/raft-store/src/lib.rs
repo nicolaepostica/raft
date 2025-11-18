@@ -484,7 +484,10 @@ mod tests {
         )
         .unwrap();
         let db = UserDb::init(conn).unwrap();
-        assert_eq!(db.load_sources().unwrap(), vec![Source::new("/backup/books")]);
+        assert_eq!(
+            db.load_sources().unwrap(),
+            vec![Source::new("/backup/books")]
+        );
     }
 
     #[test]
