@@ -1,11 +1,11 @@
 //! The command registry: every user-visible action, with its menu, shortcut and params.
 
 use raft_doc::edits::{self, Field};
-use raft_doc::{Format, Mark, Progress, Route, Sort};
+use raft_doc::{Format, Mark, Progress, Route, Sort, Source};
 use serde_json::{Value, json};
 
 use crate::params::{opt_bool, opt_i64, opt_str, str};
-use crate::{CoverSource, EngineError, Session};
+use crate::{CoverSource, EngineError, Session, SourceStatus};
 
 /// Keyboard shortcut; `key` is an egui key name (`"Z"`, `"ArrowRight"`, `"PageDown"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,7 +221,6 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("sort.set", "Sortare", sort_set)
     },
     CommandSpec {
-        menu: Some("View/Theme"),
         shortcut: ctrl_shift("T"),
         params: r#"{"theme": "light"|"dark"} (default: switch)"#,
         record: false,
@@ -246,6 +245,20 @@ static REGISTRY: &[CommandSpec] = &[
             "Scoate un folder din bibliotecă",
             source_remove,
         )
+    },
+    CommandSpec {
+        params: r#"{"path": string, "enabled": bool} (enabling an unavailable folder tries it again)"#,
+        record: false,
+        ..spec(
+            "source.enable",
+            "Activează / dezactivează un folder",
+            source_enable,
+        )
+    },
+    CommandSpec {
+        params: r#"{"path": string, "name": string?, "new_path": string?} (a moved folder: its books keep their progress and corrections)"#,
+        record: false,
+        ..spec("source.edit", "Modifică un folder cu cărți", source_edit)
     },
     CommandSpec {
         params: r#"{"path": string}"#,
@@ -294,6 +307,13 @@ static REGISTRY: &[CommandSpec] = &[
             "Deschide în aplicația externă",
             open_external,
         )
+    },
+    CommandSpec {
+        menu: Some("File/Settings"),
+        shortcut: ctrl(","),
+        params: r#"{"open": bool} (default: switch)"#,
+        record: false,
+        ..spec("view.settings", "Setări", view_settings)
     },
     CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
@@ -486,44 +506,182 @@ fn sort_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 /// Longest accepted folder path, in bytes.
 const MAX_PATH: usize = 4096;
 
+/// Longest name given to a library folder, in characters.
+const MAX_SOURCE_NAME: usize = 200;
+
 fn folder_param(p: &Value) -> Result<String, EngineError> {
-    let path = str(p, "path")?.trim().trim_end_matches('/');
+    folder_at(p, "path")
+}
+
+fn folder_at(p: &Value, key: &str) -> Result<String, EngineError> {
+    let path = str(p, key)?.trim().trim_end_matches('/');
     if path.is_empty() || path.len() > MAX_PATH || path.chars().any(char::is_control) {
-        return Err(bad("`path` must be a folder path"));
+        return Err(bad(format!("`{key}` must be a folder path")));
     }
     Ok(path.to_owned())
 }
 
+/// The folder named by `path`, which must be in the library.
+fn known_source(s: &Session, p: &Value) -> Result<String, EngineError> {
+    let root = folder_param(p)?;
+    if s.source(&root).is_none() {
+        return Err(EngineError::NotFound(format!("source `{root}`")));
+    }
+    Ok(root)
+}
+
 fn source_add(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let root = folder_param(p)?;
-    if s.sources.contains(&root) {
+    if s.source(&root).is_some() {
         return Err(bad(format!("`{root}` is already in the library")));
     }
     let catalog = s.backend.open_source(&root).map_err(EngineError::Backend)?;
+    let source = Source::new(root.clone());
+    if let Err(e) = s.backend.save_source(&source) {
+        let _ = s.backend.close_source(&root);
+        return Err(EngineError::Backend(e));
+    }
     let before = s.catalog.books.len();
-    s.add_source(root.clone(), catalog);
+    s.add_source(source, catalog);
     let added = s.catalog.books.len() - before;
     Ok(json!({ "source": root, "books": added }))
 }
 
 fn source_remove(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let root = folder_param(p)?;
-    if !s.sources.contains(&root) {
-        return Err(EngineError::NotFound(format!("source `{root}`")));
-    }
+    let root = known_source(s, p)?;
+    s.backend
+        .forget_source(&root)
+        .map_err(EngineError::Backend)?;
     s.backend
         .close_source(&root)
         .map_err(EngineError::Backend)?;
-    if s.current_book().is_some_and(|b| b.source == root) {
-        s.state.route = Route::Library;
-    }
     s.drop_source(&root);
     Ok(Value::Null)
 }
 
+fn source_enable(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let root = known_source(s, p)?;
+    let enabled = opt_bool(p, "enabled")?.ok_or_else(|| bad("missing `enabled`"))?;
+    let Some(entry) = s.source(&root) else {
+        return Err(EngineError::NotFound(format!("source `{root}`")));
+    };
+    let mut source = entry.source.clone();
+    let was_loaded = entry.loaded();
+    source.enabled = enabled;
+    s.backend
+        .save_source(&source)
+        .map_err(EngineError::Backend)?;
+    if let Some(e) = s.source_mut(&root) {
+        e.source.enabled = enabled;
+    }
+    if !enabled {
+        if was_loaded {
+            s.backend
+                .close_source(&root)
+                .map_err(EngineError::Backend)?;
+        }
+        s.set_source_books(&root, SourceStatus::Disabled, Default::default());
+        return Ok(json!({ "source": root, "status": "disabled" }));
+    }
+    if was_loaded {
+        return Ok(json!({ "source": root, "status": "loaded" }));
+    }
+    match s.backend.open_source(&root) {
+        Ok(books) => {
+            s.set_source_books(&root, SourceStatus::Loaded, books);
+            Ok(json!({ "source": root, "status": "loaded", "books": s.source_books(&root) }))
+        }
+        Err(e) => {
+            // Stays switched on: it loads by itself when the disk is back.
+            s.set_source_books(
+                &root,
+                SourceStatus::Unavailable(e.clone()),
+                Default::default(),
+            );
+            Err(EngineError::Backend(e))
+        }
+    }
+}
+
+fn source_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let root = known_source(s, p)?;
+    let name = opt_str(p, "name")?.map(str::trim);
+    if name.is_some_and(|n| n.chars().count() > MAX_SOURCE_NAME || n.chars().any(char::is_control))
+    {
+        return Err(bad(format!(
+            "`name` must be a line of at most {MAX_SOURCE_NAME} characters"
+        )));
+    }
+    let new_path = match p.get("new_path") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(folder_at(p, "new_path")?).filter(|n| *n != root),
+    };
+    let Some(entry) = s.source(&root) else {
+        return Err(EngineError::NotFound(format!("source `{root}`")));
+    };
+    let mut source = entry.source.clone();
+    let was_loaded = entry.loaded();
+    if let Some(name) = name {
+        source.name = name.to_owned();
+    }
+    let mut status = entry.status.clone();
+    let mut books = entry.books.clone();
+    if let Some(to) = &new_path {
+        if s.source(to).is_some() {
+            return Err(bad(format!("`{to}` is already in the library")));
+        }
+        if source.enabled {
+            // The new folder must open before the old one is let go.
+            books = s.backend.open_source(to).map_err(EngineError::Backend)?;
+            status = SourceStatus::Loaded;
+        }
+        if let Err(e) = s.backend.move_source(&root, to) {
+            if source.enabled {
+                let _ = s.backend.close_source(to);
+            }
+            return Err(EngineError::Backend(e));
+        }
+        if was_loaded {
+            let _ = s.backend.close_source(&root);
+        }
+        source.path = to.clone();
+    }
+    let path = source.path.clone();
+    let saved = s.backend.save_source(&source);
+    let moved = new_path.is_some();
+    if moved {
+        if s.state.query.filters.sources.remove(&root) {
+            s.state.query.filters.sources.insert(path.clone());
+        }
+        if !matches!(status, SourceStatus::Loaded)
+            && s.current_book().is_some_and(|b| b.source == root)
+        {
+            s.state.route = Route::Library;
+        }
+    }
+    if let Some(e) = s.source_mut(&root) {
+        e.source = source;
+        if moved {
+            e.status = status;
+            e.books = books;
+        }
+    }
+    if moved {
+        s.rebuild();
+    }
+    saved.map_err(EngineError::Backend)?;
+    Ok(json!({ "source": path }))
+}
+
+fn view_settings(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let open = opt_bool(p, "open")?.unwrap_or(!s.settings_open());
+    s.set_settings_open(open);
+    Ok(json!({ "open": open }))
+}
+
 fn toggle_source(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let root = folder_param(p)?;
-    if !s.sources.contains(&root) && !s.state.query.filters.sources.contains(&root) {
+    if s.source(&root).is_none() && !s.state.query.filters.sources.contains(&root) {
         return Err(EngineError::NotFound(format!("source `{root}`")));
     }
     toggle(&mut s.state.query.filters.sources, root);
