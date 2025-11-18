@@ -211,6 +211,7 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ),
     ("{0} cărți", "{0} books", "книг: {0}"),
     ("dezactivat", "disabled", "выключена"),
+    ("Activ: {0}", "Enabled: {0}", "Включена: {0}"),
     ("indisponibil", "unavailable", "недоступна"),
     ("Reîncearcă", "Try again", "Повторить"),
     ("Schimbă folderul…", "Change folder…", "Сменить папку…"),
