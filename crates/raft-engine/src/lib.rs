@@ -14,6 +14,7 @@ use raft_search::Index;
 use serde_json::Value;
 
 pub use commands::{CommandSpec, Shortcut, registry};
+pub use raft_doc::Source;
 pub use raft_search::Facets;
 
 /// Errors a command can return.
@@ -75,14 +76,26 @@ pub trait Backend: Send {
     fn save_setting(&self, _key: &str, _value: &str) -> Result<(), String> {
         Ok(())
     }
-    /// Opens a library folder (its `catalog.db`), remembers it, and returns its
-    /// books tagged with their source.
+    /// Opens a library folder (its `catalog.db`) for content search and returns
+    /// its books tagged with their source. Does not remember it: see `save_source`.
     fn open_source(&self, _root: &str) -> Result<Catalog, String> {
         Err("adding library folders is not available here".into())
     }
-    /// Forgets a library folder (its files are not touched).
+    /// Closes an open library folder (its files are not touched).
     fn close_source(&self, _root: &str) -> Result<(), String> {
+        Ok(())
+    }
+    /// Remembers a library folder, or updates its name and switch.
+    fn save_source(&self, _source: &Source) -> Result<(), String> {
+        Err("saving library folders is not available here".into())
+    }
+    /// Forgets a library folder.
+    fn forget_source(&self, _root: &str) -> Result<(), String> {
         Err("removing library folders is not available here".into())
+    }
+    /// A remembered folder moved to `to` (it keeps its place in the list).
+    fn move_source(&self, _from: &str, _to: &str) -> Result<(), String> {
+        Err("moving library folders is not available here".into())
     }
     /// Stores a custom cover for the book (kept apart from the catalog's covers).
     fn set_cover(&self, _book: &Book, _source: &CoverSource) -> Result<(), String> {
@@ -131,6 +144,34 @@ struct History {
     last: Option<&'static str>,
 }
 
+/// Whether a library folder's books are in the session.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "reason")]
+pub enum SourceStatus {
+    Loaded,
+    /// Switched off by the user.
+    Disabled,
+    /// Switched on but could not be opened (unplugged disk, no catalog.db).
+    Unavailable(String),
+}
+
+/// A library folder and its state in this session.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SourceEntry {
+    #[serde(flatten)]
+    pub source: Source,
+    pub status: SourceStatus,
+    /// Its books, as loaded (before merging and corrections).
+    #[serde(skip)]
+    books: Catalog,
+}
+
+impl SourceEntry {
+    pub fn loaded(&self) -> bool {
+        self.status == SourceStatus::Loaded
+    }
+}
+
 /// One open library: catalog, user state, history and cached results.
 pub struct Session {
     /// The catalog as loaded, without corrections.
@@ -154,7 +195,11 @@ pub struct Session {
     /// Interface language code (`ro`, `en`, `ru`).
     language: String,
     /// Library folders the books come from, in the order they were added.
-    sources: Vec<String>,
+    sources: Vec<SourceEntry>,
+    /// Books that belong to no configured folder (tests, the web build).
+    loose: Catalog,
+    /// The settings window is open (a view state, not undone).
+    settings: bool,
 }
 
 impl Session {
@@ -172,6 +217,8 @@ impl Session {
             .collect();
         let mut s = Self {
             base: catalog.clone(),
+            loose: catalog.clone(),
+            settings: false,
             catalog,
             positions,
             index,
@@ -246,38 +293,151 @@ impl Session {
 
     /// Drops a book from the session (after its file was removed).
     pub(crate) fn forget_book(&mut self, id: &str) {
-        self.base.books.retain(|b| b.id != id);
+        self.loose.books.retain(|b| b.id != id);
+        for e in &mut self.sources {
+            e.books.books.retain(|b| b.id != id);
+        }
         self.rebuild();
     }
 
-    /// The library folders, in the order they were added.
-    pub fn sources(&self) -> &[String] {
+    /// The library folders, in the order they were added, with their state.
+    pub fn sources(&self) -> &[SourceEntry] {
         &self.sources
     }
 
-    /// Starts with these library folders (their books are already in the catalog).
-    pub fn with_sources(mut self, sources: Vec<String>) -> Self {
-        self.sources = sources;
+    pub(crate) fn source(&self, root: &str) -> Option<&SourceEntry> {
+        self.sources.iter().find(|e| e.source.path == root)
+    }
+
+    pub(crate) fn source_mut(&mut self, root: &str) -> Option<&mut SourceEntry> {
+        self.sources.iter_mut().find(|e| e.source.path == root)
+    }
+
+    /// The folders whose books are loaded.
+    pub fn loaded_sources(&self) -> impl Iterator<Item = &Source> {
+        self.sources
+            .iter()
+            .filter(|e| e.loaded())
+            .map(|e| &e.source)
+    }
+
+    /// How many of the library's books come from this folder.
+    pub fn source_books(&self, root: &str) -> usize {
+        self.catalog
+            .books
+            .iter()
+            .filter(|b| b.source == root)
+            .count()
+    }
+
+    /// The name shown for a book's folder.
+    pub fn source_name<'a>(&'a self, root: &'a str) -> &'a str {
+        self.source(root).map_or(root, |e| e.source.display_name())
+    }
+
+    /// Starts with these folders, whose books are already in the catalog given
+    /// to `new` (tests, the web build); the books of disabled ones are dropped.
+    pub fn with_sources<S: Into<Source>>(mut self, sources: Vec<S>) -> Self {
+        for source in sources {
+            let source = source.into();
+            let (mine, rest) = std::mem::take(&mut self.loose.books)
+                .into_iter()
+                .partition(|b| b.source == source.path);
+            self.loose.books = rest;
+            let status = if source.enabled {
+                SourceStatus::Loaded
+            } else {
+                SourceStatus::Disabled
+            };
+            self.sources.push(SourceEntry {
+                source,
+                status,
+                books: Catalog {
+                    books: mine,
+                    categories: Vec::new(),
+                },
+            });
+        }
+        self.rebuild();
         self
     }
 
-    /// Adds a folder's books (already tagged with `root`).
-    pub(crate) fn add_source(&mut self, root: String, catalog: Catalog) {
-        self.base.merge(catalog);
-        self.sources.push(root);
+    /// Starts with the saved folders, opening the enabled ones through the
+    /// backend; one that cannot be opened stays in the list as unavailable.
+    pub fn load_sources(mut self, sources: Vec<Source>) -> Self {
+        for source in sources {
+            let (status, books) = if source.enabled {
+                match self.backend.open_source(&source.path) {
+                    Ok(c) => (SourceStatus::Loaded, c),
+                    Err(e) => (SourceStatus::Unavailable(e), Catalog::default()),
+                }
+            } else {
+                (SourceStatus::Disabled, Catalog::default())
+            };
+            self.sources.push(SourceEntry {
+                source,
+                status,
+                books,
+            });
+        }
+        self.rebuild();
+        self
+    }
+
+    /// Adds a folder with its books (already tagged with its path).
+    pub(crate) fn add_source(&mut self, source: Source, catalog: Catalog) {
+        self.sources.push(SourceEntry {
+            source,
+            status: SourceStatus::Loaded,
+            books: catalog,
+        });
+        self.rebuild();
+    }
+
+    /// Sets a folder's books and state (empty books when it is not loaded).
+    pub(crate) fn set_source_books(&mut self, root: &str, status: SourceStatus, books: Catalog) {
+        if let Some(e) = self.source_mut(root) {
+            e.status = status;
+            e.books = books;
+        }
+        if self.source(root).is_some_and(|e| !e.loaded()) {
+            self.unshow_source(root);
+        }
         self.rebuild();
     }
 
     /// Drops a folder and its books.
     pub(crate) fn drop_source(&mut self, root: &str) {
-        self.base.books.retain(|b| b.source != root);
-        self.sources.retain(|s| s != root);
-        self.state.query.filters.sources.remove(root);
+        self.sources.retain(|e| e.source.path != root);
+        self.unshow_source(root);
         self.rebuild();
     }
 
-    /// Recomputes the corrected catalog, positions and index from `base`.
+    /// Leaves a folder that is no longer shown: its filter, and its book if open.
+    fn unshow_source(&mut self, root: &str) {
+        self.state.query.filters.sources.remove(root);
+        if self.current_book().is_some_and(|b| b.source == root) {
+            self.state.route = Route::Library;
+        }
+    }
+
+    /// The settings window is open.
+    pub fn settings_open(&self) -> bool {
+        self.settings
+    }
+
+    pub(crate) fn set_settings_open(&mut self, open: bool) {
+        self.settings = open;
+    }
+
+    /// Recomputes `base` from the loaded folders, then the corrected catalog,
+    /// positions and index. A book in two folders keeps its first loaded copy.
     fn rebuild(&mut self) {
+        let mut base = self.loose.clone();
+        for e in self.sources.iter().filter(|e| e.loaded()) {
+            base.merge(e.books.clone());
+        }
+        self.base = base;
         self.catalog = Catalog {
             books: self
                 .base
@@ -580,6 +740,7 @@ impl Session {
             "theme": if self.dark { "dark" } else { "light" },
             "language": self.language,
             "sources": self.sources,
+            "settings": self.settings,
         })
     }
 }
