@@ -291,6 +291,9 @@ impl raft_engine::Backend for Trash {
     fn remove_book(&self, _: &Book) -> Result<(), String> {
         Ok(())
     }
+    fn save_source(&self, _: &raft_doc::Source) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[test]
@@ -392,12 +395,15 @@ fn edit_icon_turns_into_cancel_then_save_and_cancel() {
 }
 
 #[test]
-fn interface_language_changes_from_the_view_menu() {
+fn interface_language_changes_from_file_settings() {
     let mut h = harness();
     h.run();
-    h.get_by_label("Vizualizare").click();
+    h.get_by_label("Fișier").click();
     h.run();
-    h.get_by_label("Limba interfeței").click();
+    h.get_by_label("Setări Ctrl+,").click();
+    h.run();
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Limba interfeței")
+        .click();
     h.run();
     h.get_by_label("English").click();
     h.run();
@@ -430,10 +436,8 @@ fn sources_section_lists_folders_and_filters_by_them() {
     if let Some(b) = catalog.books.get_mut(1) {
         b.source = "/run/media/disk/books2".into();
     }
-    let session = Session::new(catalog, vec![], Box::new(NullBackend)).with_sources(vec![
-        "/backup/books".into(),
-        "/run/media/disk/books2".into(),
-    ]);
+    let session = Session::new(catalog, vec![], Box::new(NullBackend))
+        .with_sources(vec!["/backup/books", "/run/media/disk/books2"]);
     let mut h = Harness::builder()
         .with_size(egui::vec2(1100.0, 750.0))
         .build_ui_state(
@@ -449,6 +453,58 @@ fn sources_section_lists_folders_and_filters_by_them() {
     h.get_by_label("+").click();
     h.run();
     h.get_by_label("alegerea fișierelor nu e disponibilă aici");
+}
+
+#[test]
+fn settings_window_shows_and_switches_the_folders() {
+    let mut catalog = app().session.catalog().clone();
+    for b in &mut catalog.books {
+        b.source = "/backup/books".into();
+    }
+    if let Some(b) = catalog.books.get_mut(1) {
+        b.source = "/run/media/disk/books2".into();
+    }
+    let session = Session::new(catalog, vec![], Box::new(Trash))
+        .with_sources(vec!["/backup/books", "/run/media/disk/books2"]);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(
+            |ui, app: &mut RaftUi| app.show(ui),
+            RaftUi::new(session, Box::new(NoFiles)),
+        );
+    h.run();
+    h.get_by_label("Fișier").click();
+    h.run();
+    h.get_by_label("Setări Ctrl+,").click();
+    h.run();
+    assert!(h.state().session.settings_open());
+    h.get_by_label("Surse de cărți");
+    assert_eq!(h.query_all_by_label("1 cărți").count(), 2);
+    h.get_by_label("Activ: books2").click();
+    h.run();
+    assert_eq!(h.state().session.catalog().books.len(), 1);
+    h.get_by_label("dezactivat");
+    // The sidebar only lists the folders that are on.
+    assert!(h.query_by_label("books2  (0)").is_none());
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "/backup/books")
+        .click();
+    h.run();
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "/backup/books")
+        .type_text("Raftul mare");
+    h.run();
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert_eq!(
+        h.state().session.source_name("/backup/books"),
+        "Raftul mare"
+    );
+    h.get_by_label("Raftul mare  (1)");
+    h.get_by_label("Întunecată").click();
+    h.run();
+    assert!(h.state().session.dark());
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(!h.state().session.settings_open());
 }
 
 #[test]
