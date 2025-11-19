@@ -174,26 +174,18 @@ fn main() -> Result<()> {
     let opts = parse_args()?;
     let backend = native::NativeBackend::open(&opts.data)?;
     // The saved library folders; the first run starts with --library (or its default).
-    let mut roots = backend.saved_sources()?;
+    let mut sources = backend.saved_sources()?;
     let library = opts
         .library
         .to_string_lossy()
         .trim_end_matches('/')
         .to_owned();
-    if roots.is_empty() || (opts.library_given && !roots.contains(&library)) {
-        roots.push(library);
-    }
-    let mut catalog = raft_doc::Catalog::default();
-    let mut sources = Vec::new();
-    for root in roots {
-        // A folder on an unplugged disk is skipped for this run and kept for the next.
-        match backend.open_source(&root) {
-            Ok(c) => {
-                catalog.merge(c);
-                sources.push(root);
-            }
-            Err(e) => eprintln!("raft: library folder skipped: {e}"),
-        }
+    if sources.is_empty() || (opts.library_given && !sources.iter().any(|s| s.path == library)) {
+        let source = raft_doc::Source::new(library);
+        backend
+            .save_source(&source)
+            .map_err(|e| anyhow::anyhow!("saving the library folder: {e}"))?;
+        sources.push(source);
     }
     let progress = backend.load_progress()?;
     let overrides = backend.load_overrides()?;
@@ -206,11 +198,11 @@ fn main() -> Result<()> {
         _ => backend.load_dark()?,
     };
     let files = native::NativeFiles::new(&opts.data);
-    let session = Session::new(catalog, progress, Box::new(backend))
+    let session = Session::new(raft_doc::Catalog::default(), progress, Box::new(backend))
         .with_overrides(overrides)
         .with_dark(dark)
         .with_language(&language)
-        .with_sources(sources);
+        .load_sources(sources);
     let ui = RaftUi::new(session, Box::new(files));
 
     let viewport = egui::ViewportBuilder::default()
