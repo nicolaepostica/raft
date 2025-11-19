@@ -9,6 +9,7 @@ mod edit;
 pub mod i18n;
 mod library;
 mod reader;
+mod settings;
 mod text_reader;
 pub mod theme;
 
@@ -81,6 +82,8 @@ pub struct RaftUi {
     themed: Option<bool>,
     /// A cover file chooser that is open, for this book.
     picking: Option<(Pick, std::sync::mpsc::Receiver<Option<String>>)>,
+    /// Folder names being typed in the settings window, by folder path.
+    source_names: std::collections::BTreeMap<String, String>,
 }
 
 impl RaftUi {
@@ -98,6 +101,7 @@ impl RaftUi {
             focus_search: false,
             confirm_delete: None,
             picking: None,
+            source_names: Default::default(),
             themed: None,
         }
     }
@@ -145,6 +149,7 @@ impl RaftUi {
                 });
             }
         }
+        settings::window(self, ui.ctx());
         self.delete_dialog(ui.ctx());
         self.poll_picker(ui.ctx());
     }
@@ -163,6 +168,9 @@ impl RaftUi {
                         self.act("book.cover.set", json!({ "id": id, "path": path }));
                     }
                     Pick::Folder => self.act("source.add", json!({ "path": path })),
+                    Pick::Move(from) => {
+                        self.act("source.edit", json!({ "path": from, "new_path": path }));
+                    }
                 }
             }
             Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => self.picking = None,
@@ -222,6 +230,11 @@ impl RaftUi {
             // Esc closes the dialog instead of going back.
             return;
         }
+        if self.session.settings_open()
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.act("view.settings", json!({ "open": false }));
+        }
         if ctx.input_mut(|i| {
             i.consume_shortcut(&egui::KeyboardShortcut::new(
                 egui::Modifiers::COMMAND,
@@ -263,41 +276,34 @@ impl RaftUi {
                         if path.split('/').next() != Some(menu) {
                             continue;
                         }
-                        let mut button = egui::Button::new(i18n::t_dyn(spec.label));
-                        if let Some(sc) = spec.shortcut.and_then(keyboard_shortcut) {
-                            button = button.shortcut_text(ui.ctx().format_shortcut(&sc));
-                        }
-                        let enabled = self.session.enabled(spec.id);
-                        let resp = ui.add_enabled(enabled.is_ok(), button);
-                        let resp = match &enabled {
-                            Err(reason) => resp.on_disabled_hover_text(reason),
-                            Ok(()) => resp,
-                        };
-                        if resp.clicked() {
-                            if spec.id == "source.add" {
-                                // Needs a folder: ask for it first.
-                                add_folder(self);
-                            } else {
-                                self.act(spec.id, Value::Null);
-                            }
-                            ui.close();
-                        }
-                    }
-                    if menu == "View" {
-                        ui.separator();
-                        ui.menu_button(t("Limba interfeței"), |ui| {
-                            for lang in i18n::Lang::ALL {
-                                let on = self.session.language() == lang.code();
-                                if ui.selectable_label(on, lang.name()).clicked() {
-                                    self.act("view.language", json!({ "language": lang.code() }));
-                                    ui.close();
-                                }
-                            }
-                        });
+                        self.menu_item(ui, spec);
                     }
                 });
             }
         });
+    }
+
+    /// One menu entry for a command: label, shortcut, enabled state.
+    fn menu_item(&mut self, ui: &mut egui::Ui, spec: &raft_engine::CommandSpec) {
+        let mut button = egui::Button::new(i18n::t_dyn(spec.label));
+        if let Some(sc) = spec.shortcut.and_then(keyboard_shortcut) {
+            button = button.shortcut_text(shortcut_text(ui.ctx(), &sc));
+        }
+        let enabled = self.session.enabled(spec.id);
+        let resp = ui.add_enabled(enabled.is_ok(), button);
+        let resp = match &enabled {
+            Err(reason) => resp.on_disabled_hover_text(reason),
+            Ok(()) => resp,
+        };
+        if resp.clicked() {
+            if spec.id == "source.add" {
+                // Needs a folder: ask for it first.
+                add_folder(self);
+            } else {
+                self.act(spec.id, Value::Null);
+            }
+            ui.close();
+        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -322,12 +328,19 @@ pub(crate) enum Pick {
     Cover(BookId),
     /// A library folder to add.
     Folder,
+    /// The new place of the library folder at this path.
+    Move(String),
 }
 
 /// Opens the folder chooser for a new library folder.
 pub(crate) fn add_folder(app: &mut RaftUi) {
+    pick_folder(app, Pick::Folder);
+}
+
+/// Opens the folder chooser, for a new folder or a moved one.
+pub(crate) fn pick_folder(app: &mut RaftUi, pick: Pick) {
     match app.files.pick_folder(t("Alege folderul bibliotecii")) {
-        Some(rx) => app.picking = Some((Pick::Folder, rx)),
+        Some(rx) => app.picking = Some((pick, rx)),
         None => {
             app.session.status = Some(t("alegerea fișierelor nu e disponibilă aici").into());
         }
@@ -372,6 +385,16 @@ pub fn keyboard_shortcut(sc: Shortcut) -> Option<egui::KeyboardShortcut> {
         m |= egui::Modifiers::ALT;
     }
     Some(egui::KeyboardShortcut::new(m, key))
+}
+
+/// A shortcut as menus show it; punctuation keys by their sign (`Ctrl+,`, not `Ctrl+Comma`).
+fn shortcut_text(ctx: &egui::Context, sc: &egui::KeyboardShortcut) -> String {
+    let text = ctx.format_shortcut(sc);
+    let (name, sign) = (sc.logical_key.name(), sc.logical_key.symbol_or_name());
+    match text.strip_suffix(name) {
+        Some(mods) if sign.is_ascii() => format!("{mods}{sign}"),
+        _ => text,
+    }
 }
 
 /// Display name of a language code.
