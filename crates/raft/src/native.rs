@@ -581,10 +581,13 @@ mod tests {
             backend.content_search("coroutines", 10).unwrap(),
             vec!["aaa"]
         );
-        assert_eq!(
-            backend.saved_sources().unwrap(),
-            vec![root(&one), root(&two)]
-        );
+        // Opening is not remembering.
+        assert!(backend.saved_sources().unwrap().is_empty());
+        backend.save_source(&Source::new(root(&one))).unwrap();
+        backend.save_source(&Source::new(root(&two))).unwrap();
+        // Opening again does not search the folder twice.
+        backend.open_source(&root(&two)).unwrap();
+        assert_eq!(backend.content_search("monads", 10).unwrap(), vec!["bbb"]);
         assert!(
             backend.open_source(&root(&tmp)).is_err(),
             "no catalog.db there"
@@ -592,7 +595,12 @@ mod tests {
         assert!(backend.open_source("relative/dir").is_err());
         backend.close_source(&root(&one)).unwrap();
         assert!(backend.content_search("coroutines", 10).unwrap().is_empty());
-        assert_eq!(backend.saved_sources().unwrap(), vec![root(&two)]);
+        backend.move_source(&root(&one), "/mnt/one").unwrap();
+        backend.forget_source(&root(&two)).unwrap();
+        assert_eq!(
+            backend.saved_sources().unwrap(),
+            vec![Source::new("/mnt/one")]
+        );
         assert_eq!(c1.books.len(), 1);
         let _ = std::fs::remove_dir_all(&tmp);
     }
