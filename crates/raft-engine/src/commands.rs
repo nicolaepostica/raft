@@ -311,7 +311,7 @@ static REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         menu: Some("File/Settings"),
         shortcut: ctrl(","),
-        params: r#"{"open": bool} (default: switch)"#,
+        params: r#"{"open": bool, "tab": "general"|"shortcuts"} (default: switch; a tab opens it)"#,
         record: false,
         ..spec("view.settings", "Setări", view_settings)
     },
@@ -673,10 +673,23 @@ fn source_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     Ok(json!({ "source": path }))
 }
 
+/// The settings window's tabs; the first is the default.
+pub const SETTINGS_TABS: [&str; 2] = ["general", "shortcuts"];
+
 fn view_settings(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let open = opt_bool(p, "open")?.unwrap_or(!s.settings_open());
+    let tab =
+        match opt_str(p, "tab")? {
+            None => None,
+            Some(t) => Some(SETTINGS_TABS.into_iter().find(|k| *k == t).ok_or_else(|| {
+                bad(format!("unknown settings tab `{t}` (general or shortcuts)"))
+            })?),
+        };
+    let open = opt_bool(p, "open")?.unwrap_or(tab.is_some() || !s.settings_open());
     s.set_settings_open(open);
-    Ok(json!({ "open": open }))
+    if let Some(tab) = tab {
+        s.settings_tab = tab;
+    }
+    Ok(json!({ "open": open, "tab": s.settings_tab }))
 }
 
 fn toggle_source(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
