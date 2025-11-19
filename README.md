@@ -28,7 +28,8 @@ and Russian, in one folder with a SQLite catalog next to them.
   removed; a folder on an unplugged disk shows as unavailable and loads again when it is back.
 - **Interface:** Romanian, English or Russian, light or dark theme (both in File → Settings);
   undo/redo for every change; keyboard shortcuts (Backspace / Alt+← go back, Ctrl+S saves,
-  Ctrl+F searches, Ctrl+, opens the settings).
+  Ctrl+F searches, Ctrl+, opens the settings); the Shortcuts tab of the settings lists
+  every key, with a search.
 
 ## Running
 
