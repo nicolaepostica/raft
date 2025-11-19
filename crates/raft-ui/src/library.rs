@@ -198,16 +198,8 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
     (*min, *max) != (old_min, old_max)
 }
 
-/// The last part of a folder path (`/run/media/x/books` → `books`).
-fn folder_name(path: &str) -> &str {
-    path.trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .filter(|n| !n.is_empty())
-        .unwrap_or(path)
-}
-
-/// The "Sources" section: the library folders, each a filter, plus add and remove.
+/// The "Sources" section: the loaded library folders, each a filter; adding one
+/// here, managing them in the settings window.
 fn sources(
     app: &mut RaftUi,
     ui: &mut egui::Ui,
@@ -225,34 +217,29 @@ fn sources(
         {
             crate::add_folder(app);
         }
+        if ui
+            .small_button("…")
+            .on_hover_text(t("Toate folderele, în setări"))
+            .clicked()
+        {
+            app.act("view.settings", json!({ "open": true }));
+        }
     });
-    let roots = app.session.sources().to_vec();
+    let roots: Vec<raft_doc::Source> = app.session.loaded_sources().cloned().collect();
     for root in &roots {
         let n = facets
             .sources
             .iter()
-            .find(|(s, _)| s == root)
+            .find(|(s, _)| *s == root.path)
             .map_or(0, |(_, n)| *n);
-        ui.horizontal(|ui| {
-            let mut on = filters.sources.contains(root);
-            if ui
-                .checkbox(&mut on, format!("{}  ({n})", folder_name(root)))
-                .on_hover_text(root.as_str())
-                .changed()
-            {
-                app.act("filter.source.toggle", json!({ "path": root }));
-            }
-            if roots.len() > 1
-                && ui
-                    .small_button("×")
-                    .on_hover_text(t(
-                        "Scoate folderul din bibliotecă (fișierele rămân pe disc)",
-                    ))
-                    .clicked()
-            {
-                app.act("source.remove", json!({ "path": root }));
-            }
-        });
+        let mut on = filters.sources.contains(&root.path);
+        if ui
+            .checkbox(&mut on, format!("{}  ({n})", root.display_name()))
+            .on_hover_text(root.path.as_str())
+            .changed()
+        {
+            app.act("filter.source.toggle", json!({ "path": root.path }));
+        }
     }
 }
 
