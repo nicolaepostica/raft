@@ -84,6 +84,8 @@ pub struct RaftUi {
     picking: Option<(Pick, std::sync::mpsc::Receiver<Option<String>>)>,
     /// Folder names being typed in the settings window, by folder path.
     source_names: std::collections::BTreeMap<String, String>,
+    /// What is typed in the settings' shortcut search.
+    shortcut_filter: String,
 }
 
 impl RaftUi {
@@ -102,6 +104,7 @@ impl RaftUi {
             confirm_delete: None,
             picking: None,
             source_names: Default::default(),
+            shortcut_filter: String::new(),
             themed: None,
         }
     }
