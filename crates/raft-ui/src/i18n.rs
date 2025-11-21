@@ -221,6 +221,51 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Для перемещённой папки: книги сохранят прогресс и исправления",
     ),
     ("Scoate", "Remove", "Убрать"),
+    ("General", "General", "Общие"),
+    ("Scurtături", "Shortcuts", "Сочетания клавиш"),
+    ("Comenzi", "Commands", "Команды"),
+    ("În interfață", "In the interface", "В интерфейсе"),
+    (
+        "Caută o comandă sau o tastă",
+        "Search for a command or a key",
+        "Найти команду или клавишу",
+    ),
+    (
+        "Nicio scurtătură găsită.",
+        "No shortcut found.",
+        "Сочетания не найдены.",
+    ),
+    ("Spațiu", "Space", "Пробел"),
+    (
+        "Mută cursorul în căutare",
+        "Move the cursor to the search",
+        "Перейти к поиску",
+    ),
+    (
+        "Salvează corecturile (în formularul de corectare)",
+        "Save the corrections (in the correction form)",
+        "Сохранить исправления (в форме исправления)",
+    ),
+    (
+        "Închide fereastra de setări sau dialogul deschis",
+        "Close the settings window or the open dialog",
+        "Закрыть окно настроек или открытый диалог",
+    ),
+    (
+        "Ecranul următor (cititorul de text)",
+        "Next screen (text reader)",
+        "Следующий экран (чтение текста)",
+    ),
+    (
+        "Ecranul anterior (cititorul de text)",
+        "Previous screen (text reader)",
+        "Предыдущий экран (чтение текста)",
+    ),
+    (
+        "Începutul / sfârșitul cărții (cititorul de text)",
+        "Start / end of the book (text reader)",
+        "Начало / конец книги (чтение текста)",
+    ),
     (
         "Toate folderele, în setări",
         "All the folders, in the settings",
