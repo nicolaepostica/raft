@@ -508,6 +508,33 @@ fn settings_window_shows_and_switches_the_folders() {
 }
 
 #[test]
+fn settings_shortcuts_tab_lists_and_searches_the_keys() {
+    let mut h = harness();
+    h.run();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Comma);
+    h.run();
+    assert!(h.state().session.settings_open());
+    h.get_by_label("Scurtături").click();
+    h.run();
+    assert_eq!(h.state().session.settings_tab(), "shortcuts");
+    h.get_by_label("Ctrl+,");
+    h.get_by_label("Ctrl+Shift+T");
+    h.get_by_label("Mută cursorul în căutare");
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Caută")
+        .click();
+    h.run();
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Caută")
+        .type_text("temă");
+    h.run();
+    h.get_by_label("Ctrl+Shift+T");
+    assert!(h.query_by_label("Ctrl+,").is_none());
+    assert!(h.query_by_label("Mută cursorul în căutare").is_none());
+    h.get_by_label("General").click();
+    h.run();
+    h.get_by_label("Surse de cărți");
+}
+
+#[test]
 fn draft_changes_only_contain_edited_fields() {
     let book = Book {
         id: "a".into(),
