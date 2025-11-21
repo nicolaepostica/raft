@@ -200,6 +200,8 @@ pub struct Session {
     loose: Catalog,
     /// The settings window is open (a view state, not undone).
     settings: bool,
+    /// Its tab: one of `commands::SETTINGS_TABS`.
+    settings_tab: &'static str,
 }
 
 impl Session {
@@ -219,6 +221,7 @@ impl Session {
             base: catalog.clone(),
             loose: catalog.clone(),
             settings: false,
+            settings_tab: commands::SETTINGS_TABS[0],
             catalog,
             positions,
             index,
@@ -428,6 +431,11 @@ impl Session {
 
     pub(crate) fn set_settings_open(&mut self, open: bool) {
         self.settings = open;
+    }
+
+    /// The settings window's tab (`general` or `shortcuts`).
+    pub fn settings_tab(&self) -> &'static str {
+        self.settings_tab
     }
 
     /// Recomputes `base` from the loaded folders, then the corrected catalog,
@@ -741,6 +749,7 @@ impl Session {
             "language": self.language,
             "sources": self.sources,
             "settings": self.settings,
+            "settings_tab": self.settings_tab,
         })
     }
 }
