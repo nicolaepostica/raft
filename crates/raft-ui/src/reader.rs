@@ -1,4 +1,12 @@
-//! Paged reader (PDF, DjVu): one rendered page at a time, fit to width or to the window.
+//! Paged reader (PDF, DjVu): every page in one scrolling column, fit to the width
+//! or to the window.
+//!
+//! Only the pages in view (and the next one) are rendered; the others are empty
+//! slots of the same size, so the column has the whole book's height from the
+//! start. The page at the reading point (a third down the view) is the current
+//! page: it is saved with `reader.goto` as the view scrolls, and a page changed
+//! elsewhere (buttons, ←/→, the page field, the control channel) scrolls the view
+//! to it.
 
 use egui::TextureHandle;
 use serde_json::json;
@@ -6,10 +14,18 @@ use serde_json::json;
 use crate::i18n::{t, tf};
 use crate::{RaftUi, decode_image};
 
-/// Page textures kept for quick back-and-forth.
-const KEEP: usize = 6;
+/// Page textures kept, enough for a screen of small pages and a few around it.
+const KEEP: usize = 16;
 /// Rendered widths are rounded to this step so resizing does not re-render each pixel.
 const WIDTH_STEP: f32 = 200.0;
+/// Space between pages, in points.
+const GAP: f32 = 12.0;
+/// Height / width assumed until a page of the book has been rendered (A4).
+const DEFAULT_ASPECT: f32 = 1.414;
+/// The reading point, as a fraction of the view's height from its top.
+const READING_POINT: f32 = 0.3;
+/// Points scrolled by ↑/↓.
+const LINE: f32 = 80.0;
 
 type Key = (String, u32, u32);
 
@@ -18,13 +34,34 @@ pub struct ReaderView {
     textures: Vec<(Key, Result<TextureHandle, String>)>,
     /// Fit the whole page in the window instead of fitting the width.
     pub fit_page: bool,
-    /// Height / width of the last page shown.
-    aspect: Option<f32>,
+    /// Height / width of the book's pages (of the first one rendered).
+    aspect: Option<(String, f32)>,
+    /// The page the view is at, for this book; differs from the saved page when
+    /// the page was changed elsewhere and the view must scroll to it.
+    shown: Option<(String, u32)>,
+    /// Scroll offset and view height of the last frame.
+    offset: f32,
+    view_height: f32,
+    /// Distance between page tops in the last frame (changes with the width).
+    stride: f32,
+    /// Offset set by the last jump: the page is not read back from the scroll
+    /// until the user scrolls away from it (the end of the book cannot be
+    /// scrolled to the top of the view).
+    pinned: Option<f32>,
 }
 
 impl ReaderView {
     fn get(&self, key: &Key) -> Option<&Result<TextureHandle, String>> {
         self.textures.iter().find(|(k, _)| k == key).map(|(_, t)| t)
+    }
+
+    /// Any texture of this page, at another width (while the right one renders).
+    fn any_width(&self, id: &str, page: u32) -> Option<&TextureHandle> {
+        self.textures
+            .iter()
+            .rev()
+            .find(|((b, p, _), r)| b == id && *p == page && r.is_ok())
+            .and_then(|(_, r)| r.as_ref().ok())
     }
 
     fn put(&mut self, key: Key, value: Result<TextureHandle, String>) {
@@ -43,7 +80,103 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     };
     let page = app.session.progress(id).and_then(|p| p.page).unwrap_or(1);
     let pages = book.pages.unwrap_or(0);
+    // Unknown page count: one page past the current one, so scrolling goes on.
+    let count = if pages > 0 { pages } else { page + 1 };
 
+    toolbar(app, ui, &book, page, pages);
+    ui.separator();
+
+    let avail = ui.available_size();
+    let ppp = ui.ctx().pixels_per_point();
+    let aspect = match &app.reader.aspect {
+        Some((b, a)) if *b == book.id => *a,
+        _ => DEFAULT_ASPECT,
+    };
+    let mut width_pts = avail.x - 24.0;
+    if app.reader.fit_page {
+        width_pts = width_pts.min((avail.y - GAP) / aspect);
+    }
+    let width_pts = width_pts.max(50.0);
+    let width_px = ((width_pts * ppp / WIDTH_STEP).ceil() * WIDTH_STEP).clamp(200.0, 4000.0) as u32;
+    let slot = egui::vec2(width_pts, width_pts * aspect);
+    let stride = slot.y + GAP;
+
+    // Where to scroll this frame, if anywhere.
+    let view = &mut app.reader;
+    let same_book = view.shown.as_ref().is_some_and(|(b, _)| *b == book.id);
+    let mut jump = None;
+    if !same_book || view.shown.as_ref().map(|(_, p)| *p) != Some(page) {
+        jump = Some((page - 1) as f32 * stride);
+    } else if (view.stride - stride).abs() > 0.5 && view.stride > 0.0 {
+        // New width: keep the same place in the same page.
+        let place = (view.offset + view.view_height * READING_POINT) / view.stride;
+        jump = Some(place * stride - view.view_height * READING_POINT);
+    } else if let Some(delta) = scroll_keys(ui, view.view_height) {
+        jump = Some(view.offset + delta);
+    }
+    let max_offset = (count as f32 * stride - view.view_height).max(0.0);
+    let jump = jump.map(|y| y.clamp(0.0, max_offset));
+    if jump.is_some() {
+        view.pinned = jump;
+        view.shown = Some((book.id.clone(), page));
+    }
+    view.stride = stride;
+
+    let mut area = egui::ScrollArea::vertical()
+        .id_salt(("pages", &book.id))
+        .auto_shrink([false, false]);
+    if let Some(y) = jump {
+        area = area.vertical_scroll_offset(y);
+    }
+    let mut clicked = None;
+    let mut waiting = false;
+    let out = area.show_viewport(ui, |ui, viewport| {
+        let top = ui.min_rect().top();
+        let left = ui.min_rect().left() + ((ui.available_width() - slot.x) / 2.0).max(0.0);
+        ui.set_height(count as f32 * stride);
+        ui.set_width(ui.available_width());
+        let first = (viewport.min.y / stride).floor().max(0.0) as u32 + 1;
+        let last = ((viewport.max.y / stride).ceil() as u32).clamp(1, count);
+        for p in first..=last {
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(left, top + (p - 1) as f32 * stride),
+                slot,
+            );
+            waiting |= page_slot(app, ui, &book, p, width_px, rect, &mut clicked);
+        }
+        // Prefetch the page after the view.
+        if last < count {
+            let _ = app.files.page(&book, last + 1, width_px);
+        }
+    });
+    if waiting {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(50));
+    }
+
+    let view = &mut app.reader;
+    view.offset = out.state.offset.y;
+    view.view_height = out.inner_rect.height();
+    if let Some(cmd) = clicked {
+        app.act(cmd, json!({}));
+        return;
+    }
+    // Scrolled by the user: the page at the reading point becomes the current one.
+    let pinned = view
+        .pinned
+        .is_some_and(|y| (y.min(max_offset) - view.offset).abs() < 1.0);
+    if jump.is_none() && !pinned {
+        view.pinned = None;
+        let at = view.offset + view.view_height * READING_POINT;
+        let current = ((at / stride).floor() as u32 + 1).clamp(1, count);
+        if current != page {
+            view.shown = Some((book.id.clone(), current));
+            app.act("reader.goto", json!({ "page": current }));
+        }
+    }
+}
+
+fn toolbar(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book, page: u32, pages: u32) {
     ui.horizontal(|ui| {
         crate::back_button(app, ui, t("Înapoi la pagina cărții"));
         ui.separator();
@@ -75,20 +208,49 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         ui.separator();
         ui.add(egui::Label::new(egui::RichText::new(book.display_title()).strong()).truncate());
     });
-    ui.separator();
+}
 
-    let avail = ui.available_size();
-    let ppp = ui.ctx().pixels_per_point();
-    let mut width_pts = avail.x - 16.0;
-    if app.reader.fit_page {
-        let aspect = app.reader.aspect.unwrap_or(1.414);
-        width_pts = width_pts.min((avail.y - 8.0) / aspect);
+/// ↑/↓ scroll a little, Page Up/Down and Space a screen, Home/End to the ends.
+fn scroll_keys(ui: &egui::Ui, view_height: f32) -> Option<f32> {
+    if ui.ctx().egui_wants_keyboard_input() {
+        return None;
     }
-    let width_px = ((width_pts * ppp / WIDTH_STEP).ceil() * WIDTH_STEP).clamp(200.0, 4000.0) as u32;
+    let screen = (view_height * 0.9).max(LINE);
+    ui.input(|i| {
+        let mut delta = 0.0;
+        delta += LINE * f32::from(u8::from(i.key_pressed(egui::Key::ArrowDown)));
+        delta -= LINE * f32::from(u8::from(i.key_pressed(egui::Key::ArrowUp)));
+        if i.key_pressed(egui::Key::PageDown) || i.key_pressed(egui::Key::Space) {
+            delta += screen;
+        }
+        if i.key_pressed(egui::Key::PageUp) {
+            delta -= screen;
+        }
+        if i.key_pressed(egui::Key::Home) {
+            delta = f32::NEG_INFINITY;
+        }
+        if i.key_pressed(egui::Key::End) {
+            delta = f32::INFINITY;
+        }
+        (delta != 0.0).then_some(delta)
+    })
+    .map(|d| d.clamp(-1e9, 1e9))
+}
 
+/// Draws one page in its slot (rendering it if needed); true while it renders.
+fn page_slot(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    book: &raft_doc::Book,
+    page: u32,
+    width_px: u32,
+    rect: egui::Rect,
+    clicked: &mut Option<&'static str>,
+) -> bool {
     let key: Key = (book.id.clone(), page, width_px);
+    let mut waiting = false;
     if app.reader.get(&key).is_none() {
-        match app.files.page(&book, page, width_px) {
+        match app.files.page(book, page, width_px) {
             Some(Ok(bytes)) => {
                 let tex = decode_image(&bytes).map(|img| {
                     ui.ctx().load_texture(
@@ -97,62 +259,61 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         egui::TextureOptions::LINEAR,
                     )
                 });
+                if let Ok(tex) = &tex {
+                    let size = tex.size_vec2();
+                    let known = app.reader.aspect.as_ref().is_some_and(|(b, _)| *b == book.id);
+                    if size.x > 0.0 && !known {
+                        app.reader.aspect = Some((book.id.clone(), size.y / size.x));
+                    }
+                }
                 app.reader.put(key.clone(), tex);
             }
             Some(Err(e)) => app.reader.put(key.clone(), Err(e)),
-            None => ui
-                .ctx()
-                .request_repaint_after(std::time::Duration::from_millis(50)),
+            None => waiting = true,
         }
     }
-    // Prefetch the next page.
-    if page < pages {
-        let _ = app.files.page(&book, page + 1, width_px);
-    }
-
-    match app.reader.get(&key).cloned() {
-        None => {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.spinner();
-                ui.label(tf("Se randează pagina {0}…", &[&page]));
-            });
-        }
+    let texture = match app.reader.get(&key) {
+        Some(Ok(tex)) => Some(tex.clone()),
         Some(Err(e)) => {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.label(tf("Pagina nu a putut fi afișată: {0}", &[&e]));
-                if ui.button(t("Deschide în aplicația externă")).clicked() {
-                    app.act("book.open_external", json!({ "id": book.id }));
-                }
-            });
-        }
-        Some(Ok(tex)) => {
-            let size = tex.size_vec2();
-            if size.x > 0.0 {
-                app.reader.aspect = Some(size.y / size.x);
-            }
-            let scale = width_pts / size.x.max(1.0);
-            egui::ScrollArea::both()
-                .id_salt(("page", page))
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.vertical_centered(|ui| {
-                        let resp = ui.add(
-                            egui::Image::new((tex.id(), size * scale)).sense(egui::Sense::click()),
-                        );
-                        if resp.clicked()
-                            && let Some(pos) = resp.interact_pointer_pos()
-                        {
-                            let cmd = if pos.x > resp.rect.center().x {
-                                "reader.next"
-                            } else {
-                                "reader.prev"
-                            };
-                            app.act(cmd, json!({}));
-                        }
-                    });
+            let e = e.clone();
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(40.0);
+                    ui.label(tf("Pagina nu a putut fi afișată: {0}", &[&e]));
+                    if ui.button(t("Deschide în aplicația externă")).clicked() {
+                        app.act("book.open_external", json!({ "id": book.id }));
+                    }
                 });
+            });
+            return false;
         }
+        None => app.reader.any_width(&book.id, page).cloned(),
+    };
+    let Some(tex) = texture else {
+        ui.painter()
+            .rect_filled(rect, 2.0, ui.visuals().faint_bg_color);
+        ui.put(
+            egui::Rect::from_center_size(rect.center(), egui::vec2(200.0, 60.0)),
+            egui::Label::new(tf("Se randează pagina {0}…", &[&page])),
+        );
+        return waiting;
+    };
+    // The page fits its slot (pages of another shape keep their own shape).
+    let size = tex.size_vec2();
+    let scale = (rect.width() / size.x.max(1.0)).min(rect.height() / size.y.max(1.0));
+    let shown = egui::Rect::from_center_size(rect.center(), size * scale);
+    let resp = ui.put(
+        shown,
+        egui::Image::new((tex.id(), shown.size())).sense(egui::Sense::click()),
+    );
+    if resp.clicked()
+        && let Some(pos) = resp.interact_pointer_pos()
+    {
+        *clicked = Some(if pos.x > resp.rect.center().x {
+            "reader.next"
+        } else {
+            "reader.prev"
+        });
     }
+    waiting
 }
