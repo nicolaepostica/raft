@@ -1,6 +1,7 @@
-//! The settings window: theme, interface language and the library folders.
+//! The settings window: a "General" tab (theme, interface language, the library
+//! folders) and a "Shortcuts" tab (every keyboard shortcut).
 
-use raft_engine::{SourceEntry, SourceStatus};
+use raft_engine::{Shortcut, SourceEntry, SourceStatus, registry};
 use serde_json::json;
 
 use crate::i18n::{self, t, tf};
@@ -21,16 +22,153 @@ pub(crate) fn window(app: &mut RaftUi, ctx: &egui::Context) {
         .collapsible(false)
         .resizable(true)
         .default_width(760.0)
+        .min_size([640.0, 540.0])
         .pivot(egui::Align2::CENTER_CENTER)
         .default_pos(ctx.content_rect().center())
         .show(ctx, |ui| {
-            appearance(app, ui);
-            ui.add_space(12.0);
-            sources(app, ui);
+            tabs(app, ui);
+            ui.separator();
+            if app.session.settings_tab() == "shortcuts" {
+                shortcuts(app, ui);
+            } else {
+                appearance(app, ui);
+                ui.add_space(12.0);
+                sources(app, ui);
+            }
         });
     if !open {
         app.act("view.settings", json!({ "open": false }));
     }
+}
+
+fn tabs(app: &mut RaftUi, ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        let current = app.session.settings_tab();
+        for (tab, title) in [("general", t("General")), ("shortcuts", t("Scurtături"))] {
+            if ui.selectable_label(current == tab, title).clicked() && current != tab {
+                app.act("view.settings", json!({ "tab": tab }));
+            }
+        }
+    });
+}
+
+/// Keys handled by the interface itself, not by a command: (keys, what they do).
+fn interface_keys() -> [(String, &'static str); 6] {
+    [
+        ("Ctrl+F".into(), t("Mută cursorul în căutare")),
+        (
+            "Ctrl+S".into(),
+            t("Salvează corecturile (în formularul de corectare)"),
+        ),
+        (
+            "Esc".into(),
+            t("Închide fereastra de setări sau dialogul deschis"),
+        ),
+        (
+            format!("Page Down / {} / →", t("Spațiu")),
+            t("Ecranul următor (cititorul de text)"),
+        ),
+        (
+            "Page Up / ←".into(),
+            t("Ecranul anterior (cititorul de text)"),
+        ),
+        (
+            "Home / End".into(),
+            t("Începutul / sfârșitul cărții (cititorul de text)"),
+        ),
+    ]
+}
+
+/// A shortcut as the shortcuts tab shows it (`Ctrl+Shift+Z`, `Alt+←`).
+pub(crate) fn shortcut_label(sc: &Shortcut) -> String {
+    let mut s = String::new();
+    for (on, name) in [
+        (sc.command, "Ctrl+"),
+        (sc.shift, "Shift+"),
+        (sc.alt, "Alt+"),
+    ] {
+        if on {
+            s.push_str(name);
+        }
+    }
+    s.push_str(match sc.key {
+        "ArrowLeft" => "←",
+        "ArrowRight" => "→",
+        "ArrowUp" => "↑",
+        "ArrowDown" => "↓",
+        "Escape" => "Esc",
+        "PageDown" => "Page Down",
+        "PageUp" => "Page Up",
+        "Comma" => ",",
+        "Space" => t("Spațiu"),
+        other => other,
+    });
+    s
+}
+
+fn shortcuts(app: &mut RaftUi, ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        let label = ui.label(t("Caută"));
+        ui.add(
+            egui::TextEdit::singleline(&mut app.shortcut_filter)
+                .hint_text(t("Caută o comandă sau o tastă"))
+                .desired_width(320.0),
+        )
+        .labelled_by(label.id);
+    });
+    ui.add_space(6.0);
+    let needle = app.shortcut_filter.trim().to_lowercase();
+    let keep = |keys: &str, what: &str| {
+        needle.is_empty()
+            || keys.to_lowercase().contains(&needle)
+            || what.to_lowercase().contains(&needle)
+    };
+    let commands: Vec<(String, String)> = registry()
+        .iter()
+        .filter_map(|spec| {
+            let keys: Vec<String> = spec
+                .shortcut
+                .iter()
+                .chain(spec.also)
+                .map(shortcut_label)
+                .collect();
+            (!keys.is_empty()).then(|| (keys.join("  /  "), i18n::t_dyn(spec.label)))
+        })
+        .filter(|(keys, what)| keep(keys, what))
+        .collect();
+    let others: Vec<(String, String)> = interface_keys()
+        .into_iter()
+        .map(|(keys, what)| (keys, what.to_owned()))
+        .filter(|(keys, what)| keep(keys, what))
+        .collect();
+    egui::ScrollArea::vertical()
+        .max_height(480.0)
+        .show(ui, |ui| {
+            if commands.is_empty() && others.is_empty() {
+                ui.label(t("Nicio scurtătură găsită."));
+            }
+            // One grid for both groups, so their columns line up.
+            egui::Grid::new("shortcuts")
+                .num_columns(2)
+                .spacing([24.0, 6.0])
+                .striped(true)
+                .min_col_width(260.0)
+                .show(ui, |ui| {
+                    for (title, rows) in [(t("Comenzi"), &commands), (t("În interfață"), &others)]
+                    {
+                        if rows.is_empty() {
+                            continue;
+                        }
+                        ui.strong(title);
+                        ui.end_row();
+                        for (keys, what) in rows.iter() {
+                            ui.label(egui::RichText::new(keys.as_str()).monospace());
+                            ui.label(what.as_str());
+                            ui.end_row();
+                        }
+                    }
+                });
+        });
 }
 
 fn appearance(app: &mut RaftUi, ui: &mut egui::Ui) {
