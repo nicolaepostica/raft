@@ -635,6 +635,13 @@ fn settings_window_opens_and_closes_without_undo() {
     assert!(s.run("edit.undo", &Value::Null).is_err());
     s.run("view.settings", &json!({"open": false})).unwrap();
     assert!(!s.settings_open());
+    assert_eq!(s.settings_tab(), "general");
+    s.run("view.settings", &json!({"tab": "shortcuts"}))
+        .unwrap();
+    assert!(s.settings_open());
+    assert_eq!(s.settings_tab(), "shortcuts");
+    assert!(s.run("view.settings", &json!({"tab": "colours"})).is_err());
+    assert_eq!(s.settings_tab(), "shortcuts");
 }
 
 #[test]
