@@ -78,7 +78,12 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         ui.label(t("Cartea nu mai există în catalog."));
         return;
     };
-    let page = app.session.progress(id).and_then(|p| p.page).unwrap_or(1);
+    let page = app
+        .session
+        .progress(id)
+        .and_then(|p| p.page)
+        .unwrap_or(1)
+        .max(1);
     let pages = book.pages.unwrap_or(0);
     // Unknown page count: one page past the current one, so scrolling goes on.
     let count = if pages > 0 { pages } else { page + 1 };
@@ -105,7 +110,9 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let view = &mut app.reader;
     let same_book = view.shown.as_ref().is_some_and(|(b, _)| *b == book.id);
     let mut jump = None;
-    if !same_book || view.shown.as_ref().map(|(_, p)| *p) != Some(page) {
+    // A page changed elsewhere: scroll to its top and keep it until the user scrolls.
+    let to_page = !same_book || view.shown.as_ref().map(|(_, p)| *p) != Some(page);
+    if to_page {
         jump = Some((page - 1) as f32 * stride);
     } else if (view.stride - stride).abs() > 0.5 && view.stride > 0.0 {
         // New width: keep the same place in the same page.
@@ -116,9 +123,11 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     }
     let max_offset = (count as f32 * stride - view.view_height).max(0.0);
     let jump = jump.map(|y| y.clamp(0.0, max_offset));
-    if jump.is_some() {
+    if to_page {
         view.pinned = jump;
         view.shown = Some((book.id.clone(), page));
+    } else if jump.is_some() {
+        view.pinned = None;
     }
     view.stride = stride;
 
@@ -234,7 +243,6 @@ fn scroll_keys(ui: &egui::Ui, view_height: f32) -> Option<f32> {
         }
         (delta != 0.0).then_some(delta)
     })
-    .map(|d| d.clamp(-1e9, 1e9))
 }
 
 /// Draws one page in its slot (rendering it if needed); true while it renders.
