@@ -147,10 +147,8 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         let first = (viewport.min.y / stride).floor().max(0.0) as u32 + 1;
         let last = ((viewport.max.y / stride).ceil() as u32).clamp(1, count);
         for p in first..=last {
-            let rect = egui::Rect::from_min_size(
-                egui::pos2(left, top + (p - 1) as f32 * stride),
-                slot,
-            );
+            let rect =
+                egui::Rect::from_min_size(egui::pos2(left, top + (p - 1) as f32 * stride), slot);
             waiting |= page_slot(app, ui, &book, p, width_px, rect, &mut clicked);
         }
         // Prefetch the page after the view.
@@ -269,7 +267,11 @@ fn page_slot(
                 });
                 if let Ok(tex) = &tex {
                     let size = tex.size_vec2();
-                    let known = app.reader.aspect.as_ref().is_some_and(|(b, _)| *b == book.id);
+                    let known = app
+                        .reader
+                        .aspect
+                        .as_ref()
+                        .is_some_and(|(b, _)| *b == book.id);
                     if size.x > 0.0 && !known {
                         app.reader.aspect = Some((book.id.clone(), size.y / size.x));
                     }
