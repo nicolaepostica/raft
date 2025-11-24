@@ -1,5 +1,5 @@
 //! Paged reader (PDF, DjVu): every page in one scrolling column, fit to the width
-//! or to the window.
+//! or to the window, times the reader zoom.
 //!
 //! Only the pages in view (and the next one) are rendered; the others are empty
 //! slots of the same size, so the column has the whole book's height from the
@@ -16,6 +16,8 @@ use crate::{RaftUi, decode_image};
 
 /// Page textures kept, enough for a screen of small pages and a few around it.
 const KEEP: usize = 16;
+/// Widest page rendered, in pixels (larger zooms scale it up), to bound memory.
+const MAX_WIDTH_PX: f32 = 3000.0;
 /// Rendered widths are rounded to this step so resizing does not re-render each pixel.
 const WIDTH_STEP: f32 = 200.0;
 /// Space between pages, in points.
@@ -39,6 +41,8 @@ pub struct ReaderView {
     /// The page the view is at, for this book; differs from the saved page when
     /// the page was changed elsewhere and the view must scroll to it.
     shown: Option<(String, u32)>,
+    /// The zoom of the last frame (a new zoom centres the page horizontally).
+    zoom: f32,
     /// Scroll offset and view height of the last frame.
     offset: f32,
     view_height: f32,
@@ -62,6 +66,12 @@ impl ReaderView {
             .rev()
             .find(|((b, p, _), r)| b == id && *p == page && r.is_ok())
             .and_then(|(_, r)| r.as_ref().ok())
+    }
+
+    /// Drops the textures of pages far from the view.
+    fn prune(&mut self, id: &str, first: u32, last: u32) {
+        self.textures
+            .retain(|((b, p, _), _)| b == id && *p + 2 >= first && *p <= last + 2);
     }
 
     fn put(&mut self, key: Key, value: Result<TextureHandle, String>) {
@@ -90,6 +100,8 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
 
     toolbar(app, ui, &book, page, pages);
     ui.separator();
+    crate::wheel_zoom(app, ui);
+    let zoom = app.session.zoom();
 
     let avail = ui.available_size();
     let ppp = ui.ctx().pixels_per_point();
@@ -97,14 +109,18 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         Some((b, a)) if *b == book.id => *a,
         _ => DEFAULT_ASPECT,
     };
-    let mut width_pts = avail.x - 24.0;
+    // 100% = the page fits the width (or the whole page fits the window).
+    let mut fit = avail.x - 24.0;
     if app.reader.fit_page {
-        width_pts = width_pts.min((avail.y - GAP) / aspect);
+        fit = fit.min((avail.y - GAP) / aspect);
     }
-    let width_pts = width_pts.max(50.0);
-    let width_px = ((width_pts * ppp / WIDTH_STEP).ceil() * WIDTH_STEP).clamp(200.0, 4000.0) as u32;
+    let width_pts = fit.max(50.0) * zoom;
+    let width_px =
+        ((width_pts * ppp / WIDTH_STEP).ceil() * WIDTH_STEP).clamp(200.0, MAX_WIDTH_PX) as u32;
     let slot = egui::vec2(width_pts, width_pts * aspect);
     let stride = slot.y + GAP;
+    // Wider than the window when zoomed in: it scrolls sideways too.
+    let content_w = (slot.x + 24.0).max(avail.x);
 
     // Where to scroll this frame, if anywhere.
     let view = &mut app.reader;
@@ -133,20 +149,25 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         view.pinned = None;
     }
     view.stride = stride;
+    let rezoomed = (view.zoom - zoom).abs() > f32::EPSILON;
+    view.zoom = zoom;
 
-    let mut area = egui::ScrollArea::vertical()
+    let mut area = egui::ScrollArea::both()
         .id_salt(("pages", &book.id))
         .auto_shrink([false, false]);
     if let Some(y) = jump {
         area = area.vertical_scroll_offset(y);
     }
+    if rezoomed || to_page {
+        area = area.horizontal_scroll_offset(((content_w - avail.x) / 2.0).max(0.0));
+    }
     let mut clicked = None;
     let mut waiting = false;
     let out = area.show_viewport(ui, |ui, viewport| {
         let top = ui.min_rect().top();
-        let left = ui.min_rect().left() + ((ui.available_width() - slot.x) / 2.0).max(0.0);
+        let left = ui.min_rect().left() + ((content_w - slot.x) / 2.0).max(0.0);
         ui.set_height(count as f32 * stride);
-        ui.set_width(ui.available_width());
+        ui.set_width(content_w);
         let first = (viewport.min.y / stride).floor().max(0.0) as u32 + 1;
         let last = ((viewport.max.y / stride).ceil() as u32).clamp(1, count);
         for p in first..=last {
@@ -158,6 +179,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         if last < count {
             let _ = app.files.page(&book, last + 1, width_px);
         }
+        app.reader.prune(&book.id, first, last);
     });
     if waiting {
         ui.ctx()
@@ -215,6 +237,8 @@ fn toolbar(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book, page: u32
         }
         ui.separator();
         ui.checkbox(&mut app.reader.fit_page, t("Toată pagina"));
+        ui.separator();
+        crate::zoom_controls(app, ui);
         ui.separator();
         ui.add(egui::Label::new(egui::RichText::new(book.display_title()).strong()).truncate());
     });
