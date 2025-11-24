@@ -133,6 +133,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         view.pinned = None;
     }
     view.stride = stride;
+    if std::env::var("RAFT_DEBUG").is_ok() { eprintln!("DBG page={page} to_page={to_page} resized={resized} jump={jump:?} pinned={:?} offset={} vh={} stride={stride}", view.pinned, view.offset, view.view_height); }
 
     let mut area = egui::ScrollArea::vertical()
         .id_salt(("pages", &book.id))
@@ -180,6 +181,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         let at = view.offset + view.view_height * READING_POINT;
         let current = ((at / stride).floor() as u32 + 1).clamp(1, count);
         if current != page {
+            if std::env::var("RAFT_DEBUG").is_ok() { eprintln!("DBG derive {current} offset={}", view.offset); }
             view.shown = Some((book.id.clone(), current));
             app.act("reader.goto", json!({ "page": current }));
         }
