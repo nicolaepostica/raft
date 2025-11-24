@@ -112,9 +112,12 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let mut jump = None;
     // A page changed elsewhere: scroll to its top and keep it until the user scrolls.
     let to_page = !same_book || view.shown.as_ref().map(|(_, p)| *p) != Some(page);
-    if to_page {
+    let resized = (view.stride - stride).abs() > 0.5 && view.stride > 0.0;
+    if to_page || (resized && view.pinned.is_some()) {
+        // Also when the page size changed while the view still sits on a page
+        // it jumped to (the first rendered page sets the book's real shape).
         jump = Some((page - 1) as f32 * stride);
-    } else if (view.stride - stride).abs() > 0.5 && view.stride > 0.0 {
+    } else if resized {
         // New width: keep the same place in the same page.
         let place = (view.offset + view.view_height * READING_POINT) / view.stride;
         jump = Some(place * stride - view.view_height * READING_POINT);
@@ -123,7 +126,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     }
     let max_offset = (count as f32 * stride - view.view_height).max(0.0);
     let jump = jump.map(|y| y.clamp(0.0, max_offset));
-    if to_page {
+    if to_page || (resized && view.pinned.is_some()) {
         view.pinned = jump;
         view.shown = Some((book.id.clone(), page));
     } else if jump.is_some() {
@@ -302,8 +305,9 @@ fn page_slot(
     let Some(tex) = texture else {
         ui.painter()
             .rect_filled(rect, 2.0, ui.visuals().faint_bg_color);
+        let label = egui::pos2(rect.center().x, rect.top() + 60.0);
         ui.put(
-            egui::Rect::from_center_size(rect.center(), egui::vec2(200.0, 60.0)),
+            egui::Rect::from_center_size(label, egui::vec2(240.0, 40.0)),
             egui::Label::new(tf("Se randează pagina {0}…", &[&page])),
         );
         return waiting;
