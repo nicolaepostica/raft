@@ -133,7 +133,6 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         view.pinned = None;
     }
     view.stride = stride;
-    if std::env::var("RAFT_DEBUG").is_ok() { eprintln!("DBG page={page} to_page={to_page} resized={resized} jump={jump:?} pinned={:?} offset={} vh={} stride={stride}", view.pinned, view.offset, view.view_height); }
 
     let mut area = egui::ScrollArea::vertical()
         .id_salt(("pages", &book.id))
@@ -181,7 +180,6 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         let at = view.offset + view.view_height * READING_POINT;
         let current = ((at / stride).floor() as u32 + 1).clamp(1, count);
         if current != page {
-            if std::env::var("RAFT_DEBUG").is_ok() { eprintln!("DBG derive {current} offset={}", view.offset); }
             view.shown = Some((book.id.clone(), current));
             app.act("reader.goto", json!({ "page": current }));
         }
@@ -228,7 +226,6 @@ fn scroll_keys(ui: &egui::Ui, view_height: f32) -> Option<f32> {
         return None;
     }
     let screen = (view_height * 0.9).max(LINE);
-    if std::env::var("RAFT_DEBUG").is_ok() { ui.input(|i| { let k: Vec<_> = i.events.iter().filter(|e| matches!(e, egui::Event::Key{..})).collect(); if !k.is_empty() { eprintln!("DBG keys {k:?} down={:?}", i.keys_down); } }); }
     ui.input(|i| {
         let mut delta = 0.0;
         delta += LINE * f32::from(u8::from(i.key_pressed(egui::Key::ArrowDown)));
