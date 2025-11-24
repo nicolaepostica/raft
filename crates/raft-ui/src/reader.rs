@@ -162,7 +162,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     }
 
     let view = &mut app.reader;
-    view.offset = out.state.offset.y;
+    view.offset = out.state.offset().y;
     view.view_height = out.inner_rect.height();
     if let Some(cmd) = clicked {
         app.act(cmd, json!({}));
