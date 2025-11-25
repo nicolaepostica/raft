@@ -14,8 +14,13 @@ and Russian, in one folder with a SQLite catalog next to them.
 - **Book page:** metadata, description, categories; icons under the cover to read, open in the
   system's app, show in the folder, change the cover (an image file, a dropped image or a page
   of the book) and delete the book (to the trash, after a confirmation).
-- **Readers:** PDF and DjVu pages rendered with `pdftoppm` / `ddjvu`; EPUB and FB2 as
-  reflowable text with a table of contents and adjustable letter size. The position is saved.
+- **Readers:** PDF and DjVu pages rendered with `pdftoppm` / `ddjvu`, all in one column
+  that scrolls to the end of the book (only the pages in view are rendered); EPUB and FB2 as
+  reflowable text with a table of contents and adjustable letter size. ↑/↓ scroll, Page
+  Up/Down and Space move by a screen, Home/End go to the ends. Zoom (25 % … 400 %, kept
+  between runs) with − / % / + in the reader's bar, Ctrl+= / Ctrl+− / Ctrl+0 or Ctrl+wheel:
+  the page's width for PDF/DjVu (scrolling sideways past 100 %), the letter size for
+  EPUB/FB2. The position is saved.
 - **Metadata corrections:** every field can be corrected by hand; corrections live in the app's
   own database, so rebuilding the catalog never loses them. Books are marked *edited*,
   *incomplete* (missing title, authors, year, language, categories or description) or
