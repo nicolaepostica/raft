@@ -4,7 +4,7 @@ use raft_doc::edits::{self, Field};
 use raft_doc::{Format, Mark, Progress, Route, Sort, Source};
 use serde_json::{Value, json};
 
-use crate::params::{opt_bool, opt_i64, opt_str, str};
+use crate::params::{opt_bool, opt_f64, opt_i64, opt_str, str};
 use crate::{CoverSource, EngineError, Session, SourceStatus};
 
 /// Keyboard shortcut; `key` is an egui key name (`"Z"`, `"ArrowRight"`, `"PageDown"`).
@@ -335,6 +335,38 @@ static REGISTRY: &[CommandSpec] = &[
         enabled: in_paged_reader,
         coalesce: true,
         ..spec("reader.goto", "Mergi la pagina", reader_goto)
+    },
+    CommandSpec {
+        params: r#"{"zoom": number} (0.25 … 4; 1 = page fits the width / default letter size)"#,
+        enabled: in_reader,
+        record: false,
+        ..spec("reader.zoom", "Zoom", reader_zoom)
+    },
+    CommandSpec {
+        shortcut: ctrl("="),
+        also: &[Shortcut {
+            key: "Plus",
+            command: true,
+            shift: false,
+            alt: false,
+        }],
+        enabled: in_reader,
+        record: false,
+        ..spec("reader.zoom_in", "Mărește", |s, _| zoom_step(s, 1))
+    },
+    CommandSpec {
+        shortcut: ctrl("Minus"),
+        enabled: in_reader,
+        record: false,
+        ..spec("reader.zoom_out", "Micșorează", |s, _| zoom_step(s, -1))
+    },
+    CommandSpec {
+        shortcut: ctrl("0"),
+        enabled: in_reader,
+        record: false,
+        ..spec("reader.zoom_reset", "Mărime normală", |s, _| {
+            set_zoom(s, 1.0)
+        })
     },
     CommandSpec {
         shortcut: key("ArrowRight"),
@@ -859,6 +891,48 @@ fn reader_step(s: &mut Session, delta: i64) -> Result<Value, EngineError> {
     let cur = s.state.progress.get(&id).and_then(|p| p.page).unwrap_or(1);
     let page = set_page(s, &id, i64::from(cur) + delta)?;
     Ok(json!({ "page": page }))
+}
+
+/// Smallest and largest reader zoom.
+pub const MIN_ZOOM: f32 = 0.25;
+pub const MAX_ZOOM: f32 = 4.0;
+/// The zoom steps of zoom in / out.
+const ZOOM_STEPS: [f32; 14] = [
+    0.25, 0.33, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0,
+];
+
+fn reader_zoom(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let zoom = opt_f64(p, "zoom")?.ok_or_else(|| bad("missing `zoom`"))?;
+    set_zoom(s, zoom as f32)
+}
+
+/// The next step up (`dir` > 0) or down from the current zoom.
+fn zoom_step(s: &mut Session, dir: i32) -> Result<Value, EngineError> {
+    let z = s.zoom;
+    let next = if dir > 0 {
+        ZOOM_STEPS.iter().copied().find(|&x| x > z + 0.001)
+    } else {
+        ZOOM_STEPS.iter().rev().copied().find(|&x| x < z - 0.001)
+    };
+    match next {
+        Some(z) => set_zoom(s, z),
+        None => Err(bad(if dir > 0 {
+            "already at the largest zoom"
+        } else {
+            "already at the smallest zoom"
+        })),
+    }
+}
+
+fn set_zoom(s: &mut Session, zoom: f32) -> Result<Value, EngineError> {
+    let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+    if (zoom - s.zoom).abs() > f32::EPSILON {
+        s.backend
+            .save_setting("zoom", &format!("{zoom:.3}"))
+            .map_err(|e| EngineError::Backend(format!("zoom not saved: {e}")))?;
+        s.zoom = zoom;
+    }
+    Ok(json!({ "zoom": s.zoom }))
 }
 
 fn progress_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
