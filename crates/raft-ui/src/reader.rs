@@ -31,6 +31,15 @@ const LINE: f32 = 80.0;
 
 type Key = (String, u32, u32);
 
+/// Where to scroll after the page size changed.
+#[derive(Clone, Copy)]
+enum Relayout {
+    /// The top of this page (the view was sitting on it).
+    Page(u32),
+    /// This place, in pages from the top of the book, stays at the reading point.
+    Place(f32),
+}
+
 #[derive(Default)]
 pub struct ReaderView {
     textures: Vec<(Key, Result<TextureHandle, String>)>,
@@ -43,9 +52,14 @@ pub struct ReaderView {
     shown: Option<(String, u32)>,
     /// The zoom of the last frame (a new zoom centres the page horizontally).
     zoom: f32,
-    /// Scroll offset and view height of the last frame.
+    /// Work left for the next frame, once the scroll area knows the new size
+    /// (an offset past the old size would spring back).
+    relayout: Option<Relayout>,
+    center: bool,
+    /// Scroll offset and view size of the last frame.
     offset: f32,
     view_height: f32,
+    view_width: f32,
     /// Distance between page tops in the last frame (changes with the width).
     stride: f32,
     /// Offset set by the last jump: the page is not read back from the scroll
@@ -129,28 +143,47 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     // A page changed elsewhere: scroll to its top and keep it until the user scrolls.
     let to_page = !same_book || view.shown.as_ref().map(|(_, p)| *p) != Some(page);
     let resized = (view.stride - stride).abs() > 0.5 && view.stride > 0.0;
-    if to_page || (resized && view.pinned.is_some()) {
-        // Also when the page size changed while the view still sits on a page
-        // it jumped to (the first rendered page sets the book's real shape).
+    let rezoomed = (view.zoom - zoom).abs() > f32::EPSILON;
+    let relayout = view.relayout.take();
+    let center = std::mem::take(&mut view.center) || to_page;
+    view.center = rezoomed;
+    let mut pin = to_page;
+    if to_page {
         jump = Some((page - 1) as f32 * stride);
     } else if resized {
-        // New width: keep the same place in the same page.
-        let place = (view.offset + view.view_height * READING_POINT) / view.stride;
-        jump = Some(place * stride - view.view_height * READING_POINT);
+        // New page size (zoom, window, the book's real shape once a page is
+        // rendered): keep the place, next frame.
+        view.relayout = Some(if view.pinned.is_some() {
+            Relayout::Page(page)
+        } else {
+            Relayout::Place((view.offset + view.view_height * READING_POINT) / view.stride)
+        });
+    } else if let Some(r) = relayout {
+        match r {
+            Relayout::Page(p) => {
+                jump = Some((p - 1) as f32 * stride);
+                pin = true;
+            }
+            Relayout::Place(place) => {
+                jump = Some(place * stride - view.view_height * READING_POINT);
+            }
+        }
     } else if let Some(delta) = scroll_keys(ui, view.view_height) {
         jump = Some(view.offset + delta);
     }
     let max_offset = (count as f32 * stride - view.view_height).max(0.0);
     let jump = jump.map(|y| y.clamp(0.0, max_offset));
-    if to_page || (resized && view.pinned.is_some()) {
+    if pin {
         view.pinned = jump;
         view.shown = Some((book.id.clone(), page));
     } else if jump.is_some() {
         view.pinned = None;
     }
+    // Nothing is read back from the scroll while a relayout waits.
+    let settling = view.relayout.is_some();
     view.stride = stride;
-    let rezoomed = (view.zoom - zoom).abs() > f32::EPSILON;
     view.zoom = zoom;
+    let view_width = view.view_width;
 
     let mut area = egui::ScrollArea::both()
         .id_salt(("pages", &book.id))
@@ -158,8 +191,9 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     if let Some(y) = jump {
         area = area.vertical_scroll_offset(y);
     }
-    if rezoomed || to_page {
-        area = area.horizontal_scroll_offset(((content_w - avail.x) / 2.0).max(0.0));
+    if center {
+        let width = if view_width > 0.0 { view_width } else { avail.x };
+        area = area.horizontal_scroll_offset(((content_w - width) / 2.0).max(0.0));
     }
     let mut clicked = None;
     let mut waiting = false;
@@ -187,9 +221,9 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     }
 
     let view = &mut app.reader;
-    if std::env::var("RAFT_DEBUG").is_ok() { eprintln!("DBG off={:?} clamped={:?} inner={:?} content={:?} jump={jump:?} content_w={content_w} avail={avail:?}", out.state.unclamped_offset(), out.state.clamped_offset(), out.inner_rect.size(), out.content_size); }
     view.offset = out.state.clamped_offset().y;
     view.view_height = out.inner_rect.height();
+    view.view_width = out.inner_rect.width();
     if let Some(cmd) = clicked {
         app.act(cmd, json!({}));
         return;
@@ -198,7 +232,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     let pinned = view
         .pinned
         .is_some_and(|y| (y.min(max_offset) - view.offset).abs() < 1.0);
-    if jump.is_none() && !pinned {
+    if jump.is_none() && !pinned && !settling {
         view.pinned = None;
         let at = view.offset + view.view_height * READING_POINT;
         let current = ((at / stride).floor() as u32 + 1).clamp(1, count);
