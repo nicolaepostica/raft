@@ -202,6 +202,8 @@ pub struct Session {
     settings: bool,
     /// Its tab: one of `commands::SETTINGS_TABS`.
     settings_tab: &'static str,
+    /// Reader zoom: page width (PDF, DjVu) or letter size (EPUB, FB2), 1 = default.
+    zoom: f32,
 }
 
 impl Session {
@@ -222,6 +224,7 @@ impl Session {
             loose: catalog.clone(),
             settings: false,
             settings_tab: commands::SETTINGS_TABS[0],
+            zoom: 1.0,
             catalog,
             positions,
             index,
@@ -431,6 +434,19 @@ impl Session {
 
     pub(crate) fn set_settings_open(&mut self, open: bool) {
         self.settings = open;
+    }
+
+    /// The reader zoom (1 = the page fits the width / the default letter size).
+    pub fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
+    /// Starts with the saved reader zoom (out of range or invalid = 1).
+    pub fn with_zoom(mut self, zoom: f32) -> Self {
+        if zoom.is_finite() && (commands::MIN_ZOOM..=commands::MAX_ZOOM).contains(&zoom) {
+            self.zoom = zoom;
+        }
+        self
     }
 
     /// The settings window's tab (`general` or `shortcuts`).
@@ -750,6 +766,7 @@ impl Session {
             "sources": self.sources,
             "settings": self.settings,
             "settings_tab": self.settings_tab,
+            "zoom": self.zoom,
         })
     }
 }
