@@ -627,6 +627,38 @@ fn library_folders_are_disabled_renamed_and_moved() {
 }
 
 #[test]
+fn reader_zoom_steps_clamps_and_is_not_undone() {
+    let (mut s, _) = session();
+    assert!(
+        s.run("reader.zoom_in", &Value::Null).is_err(),
+        "only in the reader"
+    );
+    s.run("book.read", &json!({"id": "a"})).unwrap();
+    s.run("reader.zoom_in", &Value::Null).unwrap();
+    assert!((s.zoom() - 1.1).abs() < 1e-6);
+    s.run("reader.zoom_out", &Value::Null).unwrap();
+    s.run("reader.zoom_out", &Value::Null).unwrap();
+    assert!((s.zoom() - 0.9).abs() < 1e-6);
+    s.run("reader.zoom", &json!({"zoom": 1.3})).unwrap();
+    s.run("reader.zoom_in", &Value::Null).unwrap();
+    assert!((s.zoom() - 1.5).abs() < 1e-6);
+    s.run("reader.zoom", &json!({"zoom": 99})).unwrap();
+    assert!((s.zoom() - 4.0).abs() < 1e-6);
+    assert!(s.run("reader.zoom_in", &Value::Null).is_err());
+    assert!(s.run("reader.zoom", &json!({"zoom": "big"})).is_err());
+    assert!(s.run("reader.zoom", &json!({})).is_err());
+    s.run("reader.zoom_reset", &Value::Null).unwrap();
+    assert!((s.zoom() - 1.0).abs() < 1e-6);
+    assert_eq!(s.snapshot()["zoom"], 1.0);
+    // Zoom is a preference: undo goes back over the reading, not the zoom.
+    s.run("reader.zoom", &json!({"zoom": 2})).unwrap();
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert!((s.zoom() - 2.0).abs() < 1e-6);
+    let s = Session::new(catalog(), vec![], Box::new(NullBackend)).with_zoom(f32::NAN);
+    assert!((s.zoom() - 1.0).abs() < 1e-6);
+}
+
+#[test]
 fn settings_window_opens_and_closes_without_undo() {
     let (mut s, _) = session();
     s.run("view.settings", &Value::Null).unwrap();
