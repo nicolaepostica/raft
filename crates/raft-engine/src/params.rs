@@ -30,6 +30,17 @@ pub fn opt_i64(p: &Value, key: &str) -> Result<Option<i64>, EngineError> {
     }
 }
 
+pub fn opt_f64(p: &Value, key: &str) -> Result<Option<f64>, EngineError> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .filter(|f| f.is_finite())
+            .map(Some)
+            .ok_or_else(|| EngineError::BadParams(format!("`{key}` must be a number"))),
+    }
+}
+
 pub fn opt_bool(p: &Value, key: &str) -> Result<Option<bool>, EngineError> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
