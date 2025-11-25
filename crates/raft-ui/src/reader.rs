@@ -187,6 +187,7 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     }
 
     let view = &mut app.reader;
+    if std::env::var("RAFT_DEBUG").is_ok() { eprintln!("DBG off={:?} clamped={:?} inner={:?} content={:?} jump={jump:?} content_w={content_w} avail={avail:?}", out.state.unclamped_offset(), out.state.clamped_offset(), out.inner_rect.size(), out.content_size); }
     view.offset = out.state.clamped_offset().y;
     view.view_height = out.inner_rect.height();
     if let Some(cmd) = clicked {
