@@ -13,8 +13,12 @@ use serde_json::json;
 use crate::RaftUi;
 use crate::i18n::{t, tf};
 
-/// Widest text column, in points.
+/// Letter size at 100% zoom, in points.
+const FONT_SIZE: f32 = 18.0;
+/// Widest text column at 100% zoom, in points.
 const COLUMN: f32 = 760.0;
+/// Points scrolled by ↑/↓.
+const LINE: f32 = 80.0;
 /// Seconds between position reports while scrolling.
 const REPORT_EVERY: f64 = 0.6;
 
@@ -41,17 +45,6 @@ pub struct TextView {
     /// Target of the last jump: the reading place until the user scrolls away
     /// (the scroll cannot always bring it to the top, e.g. near the end).
     pinned: Option<(usize, Option<f32>)>,
-}
-
-/// Reader preferences (not part of the document).
-pub struct TextPrefs {
-    pub font_size: f32,
-}
-
-impl Default for TextPrefs {
-    fn default() -> Self {
-        Self { font_size: 18.0 }
-    }
 }
 
 impl TextView {
@@ -205,9 +198,12 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
     top_bar(app, ui, &title, id);
     ui.separator();
     keys(app, ui);
+    crate::wheel_zoom(app, ui);
 
-    let size = app.text_prefs.font_size;
-    let width = (ui.available_width() - 24.0).clamp(200.0, COLUMN);
+    // The zoom scales the letters and the column with them.
+    let zoom = app.session.zoom();
+    let size = (FONT_SIZE * zoom).clamp(8.0, 72.0);
+    let width = (ui.available_width() - 24.0).clamp(200.0, COLUMN * zoom.max(0.5));
     let Some(view) = app.text.as_mut() else {
         return;
     };
@@ -335,26 +331,14 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
             }
         }
         ui.separator();
-        if ui
-            .button("A−")
-            .on_hover_text(t("Litere mai mici"))
-            .clicked()
-        {
-            app.text_prefs.font_size = (app.text_prefs.font_size - 2.0).max(12.0);
-        }
-        if ui
-            .button("A+")
-            .on_hover_text(t("Litere mai mari"))
-            .clicked()
-        {
-            app.text_prefs.font_size = (app.text_prefs.font_size + 2.0).min(40.0);
-        }
+        crate::zoom_controls(app, ui);
         ui.separator();
         ui.add(egui::Label::new(egui::RichText::new(title).strong()).truncate());
     });
 }
 
-/// Page keys scroll the text by a screen (they are not document changes).
+/// Page keys scroll the text by a screen, ↑/↓ by a few lines (they are not
+/// document changes).
 fn keys(app: &mut RaftUi, ui: &egui::Ui) {
     if ui.ctx().egui_wants_keyboard_input() {
         return;
@@ -371,6 +355,10 @@ fn keys(app: &mut RaftUi, ui: &egui::Ui) {
             Some(page)
         } else if i.key_pressed(egui::Key::PageUp) || i.key_pressed(egui::Key::ArrowLeft) {
             Some(-page)
+        } else if i.key_pressed(egui::Key::ArrowDown) {
+            Some(LINE)
+        } else if i.key_pressed(egui::Key::ArrowUp) {
+            Some(-LINE)
         } else if i.key_pressed(egui::Key::Home) {
             Some(f32::NEG_INFINITY)
         } else if i.key_pressed(egui::Key::End) {
