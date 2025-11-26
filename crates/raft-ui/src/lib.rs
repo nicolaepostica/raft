@@ -71,7 +71,6 @@ pub struct RaftUi {
     covers: covers::Covers,
     reader: reader::ReaderView,
     text: Option<text_reader::TextView>,
-    text_prefs: text_reader::TextPrefs,
     /// Open metadata correction form, if any.
     edit: Option<edit::Draft>,
     search: String,
@@ -97,7 +96,6 @@ impl RaftUi {
             covers: covers::Covers::default(),
             reader: reader::ReaderView::default(),
             text: None,
-            text_prefs: text_reader::TextPrefs::default(),
             edit: None,
             search,
             focus_search: false,
@@ -125,6 +123,8 @@ impl RaftUi {
         i18n::set(i18n::Lang::from_code(self.session.language()).unwrap_or(i18n::Lang::Ro));
         let dark = self.session.dark();
         if self.themed != Some(dark) {
+            // Ctrl +/−/0 zoom the book (commands), not the whole interface.
+            ui.ctx().options_mut(|o| o.zoom_with_keyboard = false);
             theme::apply(ui.ctx(), dark);
             self.themed = Some(dark);
         }
@@ -364,6 +364,48 @@ pub(crate) fn icon_button(
     let name = name.to_owned();
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &name));
     resp.on_hover_text(hint).on_disabled_hover_text(hint)
+}
+
+/// The reader's zoom: smaller, the zoom in percent (a click resets it), larger.
+pub(crate) fn zoom_controls(app: &mut RaftUi, ui: &mut egui::Ui) {
+    let zoom = app.session.zoom();
+    if ui
+        .add_enabled(
+            app.session.enabled("reader.zoom_out").is_ok(),
+            egui::Button::new("−"),
+        )
+        .on_hover_text(t("Micșorează (Ctrl+−, Ctrl+rotița)"))
+        .clicked()
+    {
+        app.act("reader.zoom_out", json!({}));
+    }
+    if ui
+        .button(format!("{:.0}%", zoom * 100.0))
+        .on_hover_text(t("Mărime normală (Ctrl+0)"))
+        .clicked()
+    {
+        app.act("reader.zoom_reset", json!({}));
+    }
+    if ui
+        .add_enabled(
+            app.session.enabled("reader.zoom_in").is_ok(),
+            egui::Button::new("+"),
+        )
+        .on_hover_text(t("Mărește (Ctrl+=, Ctrl+rotița)"))
+        .clicked()
+    {
+        app.act("reader.zoom_in", json!({}));
+    }
+}
+
+/// Ctrl + mouse wheel (or a pinch) over the reader zooms the book.
+pub(crate) fn wheel_zoom(app: &mut RaftUi, ui: &egui::Ui) {
+    let over = ui.rect_contains_pointer(ui.max_rect());
+    let delta = ui.input(|i| i.zoom_delta());
+    if over && (delta - 1.0).abs() > 0.001 {
+        let zoom = app.session.zoom() * delta;
+        app.act("reader.zoom", json!({ "zoom": zoom }));
+    }
 }
 
 /// The back icon (Backspace, Alt+Left or Esc).
