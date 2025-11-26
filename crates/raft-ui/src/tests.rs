@@ -94,6 +94,93 @@ fn reader_without_renderer_shows_error_and_navigates() {
     h.get_by_label_contains("Pagina nu a putut fi afișată");
 }
 
+/// Renders every page as a small blank PNG, at once.
+struct BlankPages;
+
+impl crate::Files for BlankPages {
+    fn cover(&self, _: &Book) -> Option<Vec<u8>> {
+        None
+    }
+    fn page(&self, _: &Book, _: u32, width: u32) -> Option<Result<Vec<u8>, String>> {
+        let img = image::RgbImage::from_pixel(width, width * 3 / 2, image::Rgb([250, 250, 250]));
+        let mut png = Vec::new();
+        Some(
+            img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .map(|()| png)
+                .map_err(|e| e.to_string()),
+        )
+    }
+    fn text(&self, _: &Book) -> Option<Result<std::sync::Arc<raft_text::TextBook>, String>> {
+        None
+    }
+}
+
+#[test]
+fn paged_reader_scrolls_through_the_whole_book() {
+    let mut ui = app();
+    ui.files = Box::new(BlankPages);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(900.0, 700.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.state_mut()
+        .run("book.read", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    let page = |h: &Harness<'_, RaftUi>| h.state().session.progress("a").and_then(|p| p.page);
+    assert_eq!(page(&h), Some(1));
+    // Down a few lines stays on the first (tall) page; End reaches the last one.
+    h.key_press(egui::Key::ArrowDown);
+    h.run();
+    assert_eq!(page(&h), Some(1));
+    h.key_press(egui::Key::End);
+    h.run();
+    assert_eq!(page(&h), Some(10));
+    h.key_press(egui::Key::Home);
+    h.run();
+    assert_eq!(page(&h), Some(1));
+    // Screens down move the reading point into the next pages.
+    for _ in 0..4 {
+        h.key_press(egui::Key::PageDown);
+        h.run();
+    }
+    let reached = page(&h).unwrap_or(0);
+    assert!((2..10).contains(&reached), "page {reached}");
+    // A page chosen elsewhere is scrolled to and kept.
+    h.state_mut()
+        .run("reader.goto", serde_json::json!({"page": 7}))
+        .unwrap();
+    h.run();
+    h.run();
+    assert_eq!(page(&h), Some(7));
+    h.get_by_label("Următoarea").click();
+    h.run();
+    h.run();
+    assert_eq!(page(&h), Some(8));
+
+    // Zoom: buttons and keys; the page stays the same.
+    let zoom = |h: &Harness<'_, RaftUi>| (h.state().session.zoom() * 100.0).round() as i32;
+    h.get_by_label("+").click();
+    h.run();
+    assert_eq!(zoom(&h), 110);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
+    h.run();
+    h.run();
+    assert_eq!(zoom(&h), 125);
+    assert_eq!(page(&h), Some(8));
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+    h.run();
+    h.get_by_label("−").click();
+    h.run();
+    assert_eq!(zoom(&h), 100);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+    h.run();
+    h.get_by_label("90%").click();
+    h.run();
+    h.run();
+    assert_eq!(zoom(&h), 100);
+    assert_eq!(page(&h), Some(8));
+}
+
 proptest::proptest! {
     #[test]
     fn decode_image_never_panics(bytes in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..4096)) {
