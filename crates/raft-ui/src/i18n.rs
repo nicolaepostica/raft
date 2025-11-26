@@ -169,7 +169,6 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Убрать папку из библиотеки",
     ),
     ("Filtru: sursă", "Filter: source", "Фильтр: источник"),
-    ("Surse", "Sources", "Источники"),
     ("Sursă", "Source", "Источник"),
     (
         "Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)",
@@ -300,11 +299,6 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Începutul / sfârșitul cărții",
         "Start / end of the book",
         "Начало / конец книги",
-    ),
-    (
-        "Toate folderele, în setări",
-        "All the folders, in the settings",
-        "Все папки — в настройках",
     ),
     (
         "Alege folderul bibliotecii",
