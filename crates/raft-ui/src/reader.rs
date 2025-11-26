@@ -192,7 +192,11 @@ pub fn reader(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         area = area.vertical_scroll_offset(y);
     }
     if center {
-        let width = if view_width > 0.0 { view_width } else { avail.x };
+        let width = if view_width > 0.0 {
+            view_width
+        } else {
+            avail.x
+        };
         area = area.horizontal_scroll_offset(((content_w - width) / 2.0).max(0.0));
     }
     let mut clicked = None;
