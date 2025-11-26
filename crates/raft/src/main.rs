@@ -197,11 +197,13 @@ fn main() -> Result<()> {
         Ok("light") => false,
         _ => backend.load_dark()?,
     };
+    let zoom = backend.load_zoom()?.unwrap_or(1.0);
     let files = native::NativeFiles::new(&opts.data);
     let session = Session::new(raft_doc::Catalog::default(), progress, Box::new(backend))
         .with_overrides(overrides)
         .with_dark(dark)
         .with_language(&language)
+        .with_zoom(zoom)
         .load_sources(sources);
     let ui = RaftUi::new(session, Box::new(files));
 
