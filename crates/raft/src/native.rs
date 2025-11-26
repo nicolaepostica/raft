@@ -57,6 +57,11 @@ impl NativeBackend {
         Ok(self.user.setting("language")?)
     }
 
+    /// The saved reader zoom, if any (1 = default).
+    pub fn load_zoom(&self) -> Result<Option<f32>> {
+        Ok(self.user.setting("zoom")?.and_then(|z| z.parse().ok()))
+    }
+
     /// The saved theme: true for dark.
     pub fn load_dark(&self) -> Result<bool> {
         Ok(self.user.setting("theme")?.as_deref() == Some("dark"))
