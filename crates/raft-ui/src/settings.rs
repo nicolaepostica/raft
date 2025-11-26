@@ -53,7 +53,7 @@ fn tabs(app: &mut RaftUi, ui: &mut egui::Ui) {
 }
 
 /// Keys handled by the interface itself, not by a command: (keys, what they do).
-fn interface_keys() -> [(String, &'static str); 6] {
+fn interface_keys() -> [(String, &'static str); 9] {
     [
         ("Ctrl+F".into(), t("Mută cursorul în căutare")),
         (
@@ -64,18 +64,18 @@ fn interface_keys() -> [(String, &'static str); 6] {
             "Esc".into(),
             t("Închide fereastra de setări sau dialogul deschis"),
         ),
+        ("↓ / ↑".into(), t("Derulează cartea puțin în jos / în sus")),
         (
-            format!("Page Down / {} / →", t("Spațiu")),
-            t("Ecranul următor (cititorul de text)"),
+            format!("Page Down / {}", t("Spațiu")),
+            t("Un ecran mai jos în carte"),
         ),
+        ("Page Up".into(), t("Un ecran mai sus în carte")),
         (
-            "Page Up / ←".into(),
-            t("Ecranul anterior (cititorul de text)"),
+            "→ / ←".into(),
+            t("Un ecran mai jos / mai sus (cititorul de text)"),
         ),
-        (
-            "Home / End".into(),
-            t("Începutul / sfârșitul cărții (cititorul de text)"),
-        ),
+        ("Home / End".into(), t("Începutul / sfârșitul cărții")),
+        (t("Ctrl + rotița").into(), t("Mărește / micșorează cartea")),
     ]
 }
 
@@ -100,6 +100,8 @@ pub(crate) fn shortcut_label(sc: &Shortcut) -> String {
         "PageDown" => "Page Down",
         "PageUp" => "Page Up",
         "Comma" => ",",
+        "Minus" => "−",
+        "Plus" => "+",
         "Space" => t("Spațiu"),
         other => other,
     });
