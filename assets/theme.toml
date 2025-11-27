@@ -21,6 +21,7 @@ faint_dark = "#2b2f34"
 # Book marks (cover badges, "edited" note).
 edited = "#2a64b8"
 incomplete = "#b3541e"
+duplicate = "#7a4fa3"
 
 # Icon only.
 wood = "#9a6236"
