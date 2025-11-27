@@ -405,6 +405,14 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("book.review", "Marchează ca verificată", book_review)
     },
     CommandSpec {
+        params: r#"{"id": string?, "on": bool?} (default: current book, switch)"#,
+        ..spec(
+            "book.not_duplicate",
+            "Marchează: nu e dublură",
+            book_not_duplicate,
+        )
+    },
+    CommandSpec {
         params: r#"{"id": string?, "field": string?} (no field: every correction of the book, the reviewed mark stays)"#,
         ..spec(
             "book.edit.reset",
@@ -495,7 +503,7 @@ fn toggle_mark(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 fn toggle_missing(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let slug = str(p, "field")?;
     let field = Field::from_slug(slug)
-        .filter(|f| *f != Field::Reviewed)
+        .filter(|f| !f.is_mark())
         .ok_or_else(|| EngineError::BadParams(format!("unknown field `{slug}`")))?;
     toggle(&mut s.state.query.filters.missing, field);
     Ok(Value::Null)
@@ -990,10 +998,10 @@ fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError
     let json_list =
         |items: Vec<String>| serde_json::to_string(&items).map_err(|e| bad(e.to_string()));
     match field {
-        Field::Reviewed => match v {
+        Field::Reviewed | Field::NotDuplicate => match v {
             Value::Bool(true) => Ok("1".to_owned()),
             Value::Bool(false) | Value::Null => Ok(String::new()),
-            _ => Err(bad("`reviewed` must be a boolean")),
+            _ => Err(bad(format!("`{}` must be a boolean", field.slug()))),
         },
         Field::Title => {
             let t = text(MAX_SHORT)?;
@@ -1111,10 +1119,10 @@ fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
             }
         }
         None => {
-            if fields.keys().all(|f| *f == Field::Reviewed) {
+            if fields.keys().all(|f| f.is_mark()) {
                 return Err(EngineError::NotFound(format!("no corrections for `{id}`")));
             }
-            fields.retain(|f, _| *f == Field::Reviewed);
+            fields.retain(|f, _| f.is_mark());
         }
     }
     if fields.is_empty() {
@@ -1127,16 +1135,29 @@ fn book_review(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = book_id(s, p)?;
     let current = s.book(&id).is_some_and(|b| b.reviewed);
     let on = opt_bool(p, "on")?.unwrap_or(!current);
-    let fields = s.state.overrides.entry(id.clone()).or_default();
+    set_mark(s, &id, Field::Reviewed, on);
+    Ok(json!({ "reviewed": on }))
+}
+
+fn book_not_duplicate(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = book_id(s, p)?;
+    let current = s.book(&id).is_some_and(|b| b.not_duplicate);
+    let on = opt_bool(p, "on")?.unwrap_or(!current);
+    set_mark(s, &id, Field::NotDuplicate, on);
+    Ok(json!({ "not_duplicate": on }))
+}
+
+/// Sets or clears a hand mark kept with the corrections (`reviewed`, `not_duplicate`).
+fn set_mark(s: &mut Session, id: &str, field: Field, on: bool) {
+    let fields = s.state.overrides.entry(id.to_owned()).or_default();
     if on {
-        fields.insert(Field::Reviewed, "1".to_owned());
+        fields.insert(field, "1".to_owned());
     } else {
-        fields.remove(&Field::Reviewed);
+        fields.remove(&field);
     }
     if fields.is_empty() {
-        s.state.overrides.remove(&id);
+        s.state.overrides.remove(id);
     }
-    Ok(json!({ "reviewed": on }))
 }
 
 fn show_in_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
