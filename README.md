@@ -25,6 +25,10 @@ and Russian, in one folder with a SQLite catalog next to them.
   own database, so rebuilding the catalog never loses them. Books are marked *edited*,
   *incomplete* (missing title, authors, year, language, categories or description) or
   *reviewed*, and can be filtered by those marks and processed one after another.
+- **Duplicates:** books with the same ISBN (ISBN-10 and -13 alike), or the same title, year
+  and volume, are marked *duplicate?* and can be filtered ("Possible duplicates"); the book
+  page lists the other copies with format, size, pages and file name, so the extra one can
+  be deleted, or the book marked "not a duplicate".
 - **Several library folders:** add more folders (another disk, an external drive) with
   File → Add a book folder or in File → Settings (Ctrl+,); each has its own `catalog.db`
   made by `build-catalog DIR`. Their books are shown together. In the settings every folder
