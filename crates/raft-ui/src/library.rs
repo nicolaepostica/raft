@@ -48,9 +48,6 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
 
-        sources(app, ui, &facets, &filters);
-        ui.add_space(6.0);
-
         marks(app, ui, &facets, &filters);
         ui.add_space(6.0);
 
@@ -196,51 +193,6 @@ fn year_slider(ui: &mut egui::Ui, lo: i32, hi: i32, min: &mut i32, max: &mut i32
     }
     resp.on_hover_text(t("Trage capetele ca să alegi intervalul de ani"));
     (*min, *max) != (old_min, old_max)
-}
-
-/// The "Sources" section: the loaded library folders, each a filter; adding one
-/// here, managing them in the settings window.
-fn sources(
-    app: &mut RaftUi,
-    ui: &mut egui::Ui,
-    facets: &raft_engine::Facets,
-    filters: &raft_doc::Filters,
-) {
-    ui.horizontal(|ui| {
-        ui.strong(t("Surse"));
-        if ui
-            .small_button("+")
-            .on_hover_text(t(
-                "Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)",
-            ))
-            .clicked()
-        {
-            crate::add_folder(app);
-        }
-        if ui
-            .small_button("…")
-            .on_hover_text(t("Toate folderele, în setări"))
-            .clicked()
-        {
-            app.act("view.settings", json!({ "open": true }));
-        }
-    });
-    let roots: Vec<raft_doc::Source> = app.session.loaded_sources().cloned().collect();
-    for root in &roots {
-        let n = facets
-            .sources
-            .iter()
-            .find(|(s, _)| *s == root.path)
-            .map_or(0, |(_, n)| *n);
-        let mut on = filters.sources.contains(&root.path);
-        if ui
-            .checkbox(&mut on, format!("{}  ({n})", root.display_name()))
-            .on_hover_text(root.path.as_str())
-            .changed()
-        {
-            app.act("filter.source.toggle", json!({ "path": root.path }));
-        }
-    }
 }
 
 fn mark_label(m: Mark) -> &'static str {
