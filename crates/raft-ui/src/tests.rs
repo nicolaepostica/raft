@@ -515,29 +515,17 @@ fn interface_language_changes_from_file_settings() {
 }
 
 #[test]
-fn sources_section_lists_folders_and_filters_by_them() {
-    let mut catalog = app().session.catalog().clone();
-    for b in &mut catalog.books {
-        b.source = "/backup/books".into();
-    }
-    if let Some(b) = catalog.books.get_mut(1) {
-        b.source = "/run/media/disk/books2".into();
-    }
-    let session = Session::new(catalog, vec![], Box::new(NullBackend))
-        .with_sources(vec!["/backup/books", "/run/media/disk/books2"]);
-    let mut h = Harness::builder()
-        .with_size(egui::vec2(1100.0, 750.0))
-        .build_ui_state(
-            |ui, app: &mut RaftUi| app.show(ui),
-            RaftUi::new(session, Box::new(NoFiles)),
-        );
+fn library_folders_are_not_in_the_filters() {
+    let mut h = harness();
     h.run();
-    h.get_by_label("Surse");
-    h.get_by_label("books  (1)");
-    h.get_by_label("books2  (1)").click();
+    h.get_by_label("Filtre");
+    assert!(h.query_by_label("Surse").is_none());
+    // They are added from the settings window.
+    h.state_mut()
+        .run("view.settings", serde_json::json!({"open": true}))
+        .unwrap();
     h.run();
-    assert_eq!(h.state().session.result_count(), 1);
-    h.get_by_label("+").click();
+    h.get_by_label("Adaugă un folder…").click();
     h.run();
     h.get_by_label("alegerea fișierelor nu e disponibilă aici");
 }
@@ -571,8 +559,6 @@ fn settings_window_shows_and_switches_the_folders() {
     h.run();
     assert_eq!(h.state().session.catalog().books.len(), 1);
     h.get_by_label("dezactivat");
-    // The sidebar only lists the folders that are on.
-    assert!(h.query_by_label("books2  (0)").is_none());
     h.get_by_role_and_label(egui::accesskit::Role::TextInput, "/backup/books")
         .click();
     h.run();
@@ -585,7 +571,6 @@ fn settings_window_shows_and_switches_the_folders() {
         h.state().session.source_name("/backup/books"),
         "Raftul mare"
     );
-    h.get_by_label("Raftul mare  (1)");
     h.get_by_label("Întunecată").click();
     h.run();
     assert!(h.state().session.dark());
