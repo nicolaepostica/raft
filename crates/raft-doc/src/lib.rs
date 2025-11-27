@@ -93,6 +93,13 @@ pub struct Book {
     /// are relative to it.
     #[serde(default)]
     pub source: String,
+    /// Other books that are probably the same work (same ISBN, or same title,
+    /// year and volume): set by `raft_search::mark_duplicates`, not stored.
+    #[serde(default)]
+    pub duplicates: Vec<BookId>,
+    /// Marked by hand as not a duplicate of the books it resembles.
+    #[serde(default)]
+    pub not_duplicate: bool,
 }
 
 impl Book {
@@ -139,6 +146,7 @@ impl Book {
             Mark::Edited => self.edited,
             Mark::Incomplete => self.is_incomplete(),
             Mark::Reviewed => self.reviewed,
+            Mark::Duplicate => !self.duplicates.is_empty(),
         }
     }
 }
@@ -153,16 +161,24 @@ pub enum Mark {
     Incomplete,
     /// Marked as checked by hand.
     Reviewed,
+    /// Probably the same work as another book of the library.
+    Duplicate,
 }
 
 impl Mark {
-    pub const ALL: [Mark; 3] = [Self::Edited, Self::Incomplete, Self::Reviewed];
+    pub const ALL: [Mark; 4] = [
+        Self::Edited,
+        Self::Incomplete,
+        Self::Reviewed,
+        Self::Duplicate,
+    ];
 
     pub fn slug(self) -> &'static str {
         match self {
             Self::Edited => "edited",
             Self::Incomplete => "incomplete",
             Self::Reviewed => "reviewed",
+            Self::Duplicate => "duplicate",
         }
     }
 
