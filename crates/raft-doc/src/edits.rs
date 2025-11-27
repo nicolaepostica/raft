@@ -25,6 +25,8 @@ pub enum Field {
     Description,
     /// Not metadata: the "reviewed by hand" mark ("1" or absent).
     Reviewed,
+    /// Not metadata: "not a duplicate of the books it resembles" ("1" or absent).
+    NotDuplicate,
 }
 
 impl Field {
@@ -62,13 +64,19 @@ impl Field {
             Self::Tags => "tags",
             Self::Description => "description",
             Self::Reviewed => "reviewed",
+            Self::NotDuplicate => "not_duplicate",
         }
+    }
+
+    /// Marks set by hand, kept with the corrections but not corrections themselves.
+    pub fn is_mark(self) -> bool {
+        matches!(self, Self::Reviewed | Self::NotDuplicate)
     }
 
     pub fn from_slug(s: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
-            .chain([Self::Reviewed])
+            .chain([Self::Reviewed, Self::NotDuplicate])
             .find(|f| f.slug() == s)
     }
 
@@ -104,6 +112,7 @@ pub fn field_value(book: &Book, field: Field) -> String {
         Field::Tags => list(&book.tags),
         Field::Description => book.description.clone(),
         Field::Reviewed => if book.reviewed { "1" } else { "" }.to_owned(),
+        Field::NotDuplicate => if book.not_duplicate { "1" } else { "" }.to_owned(),
     }
 }
 
@@ -151,6 +160,7 @@ pub fn apply(book: &mut Book, field: Field, value: &str) {
         }
         Field::Description => book.description = text(),
         Field::Reviewed => book.reviewed = value.trim() == "1",
+        Field::NotDuplicate => book.not_duplicate = value.trim() == "1",
     }
 }
 
@@ -161,7 +171,7 @@ pub fn edited(book: &Book, overrides: &Overrides) -> Book {
         for (field, value) in fields {
             apply(&mut b, *field, value);
         }
-        b.edited = fields.keys().any(|f| *f != Field::Reviewed);
+        b.edited = fields.keys().any(|f| !f.is_mark());
     }
     b
 }
