@@ -36,6 +36,8 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
         edited: false,
         reviewed: false,
         source: String::new(),
+        duplicates: Vec::new(),
+        not_duplicate: false,
     })
 }
 
