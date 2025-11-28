@@ -200,6 +200,7 @@ fn mark_label(m: Mark) -> &'static str {
         Mark::Edited => t("Corectate manual"),
         Mark::Incomplete => t("Date incomplete"),
         Mark::Reviewed => t("Verificate"),
+        Mark::Duplicate => t("Dubluri posibile"),
     }
 }
 
@@ -226,6 +227,9 @@ fn marks(
                 "Fără titlu, autori, an, limbă, categorii sau descriere și nemarcate ca verificate",
             ),
             Mark::Reviewed => t("Marcate de tine ca verificate"),
+            Mark::Duplicate => t(
+                "Cărți cu același ISBN, sau cu același titlu, an și volum, ca alta din bibliotecă",
+            ),
         };
         if ui
             .checkbox(&mut on, format!("{}  ({})", mark_label(m), count(m)))
@@ -403,7 +407,10 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         y += 2.0 + badge(&painter, at(y), t("corectată"), crate::theme::edited());
     }
     if book.is_incomplete() {
-        badge(&painter, at(y), t("incompletă"), crate::theme::incomplete());
+        y += 2.0 + badge(&painter, at(y), t("incompletă"), crate::theme::incomplete());
+    }
+    if !book.duplicates.is_empty() {
+        badge(&painter, at(y), t("dublură?"), crate::theme::duplicate());
     }
     if let Some(p) = app.session.progress(&book.id) {
         let bar = egui::Rect::from_min_size(
