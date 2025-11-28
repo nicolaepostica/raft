@@ -40,6 +40,156 @@ pub fn query_words(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Most books in one duplicate group; a larger group is a false match (a series
+/// sharing a title) and is ignored.
+pub const MAX_DUPLICATES: usize = 8;
+
+/// Sets `Book::duplicates`: books with the same ISBN (ISBN-10 and -13 compared as
+/// one), or the same title, year and volume (the volume read from the title or the
+/// file name: "Том 3", "Vol. 2", "Part IV"…). Books marked `not_duplicate` are left
+/// out. Linear in the number of books.
+pub fn mark_duplicates(books: &mut [Book]) {
+    let n = books.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while let Some(&p) = parent.get(i) {
+            if p == i {
+                break;
+            }
+            let grand = parent.get(p).copied().unwrap_or(p);
+            if let Some(slot) = parent.get_mut(i) {
+                *slot = grand;
+            }
+            i = grand;
+        }
+        i
+    }
+    let mut first: HashMap<String, usize> = HashMap::new();
+    for (i, b) in books.iter().enumerate() {
+        if b.not_duplicate {
+            continue;
+        }
+        let keys = [
+            b.isbn
+                .as_deref()
+                .and_then(isbn13)
+                .map(|k| format!("isbn:{k}")),
+            title_key(b),
+        ];
+        for key in keys.into_iter().flatten() {
+            match first.get(&key) {
+                Some(&j) => {
+                    let (a, c) = (root(&mut parent, i), root(&mut parent, j));
+                    if let Some(slot) = parent.get_mut(a) {
+                        *slot = c;
+                    }
+                }
+                None => {
+                    first.insert(key, i);
+                }
+            }
+        }
+    }
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        let r = root(&mut parent, i);
+        groups.entry(r).or_default().push(i);
+    }
+    let mut found: Vec<Vec<String>> = vec![Vec::new(); n];
+    for members in groups.values() {
+        if members.len() < 2 || members.len() > MAX_DUPLICATES {
+            continue;
+        }
+        for &i in members {
+            let others = members
+                .iter()
+                .filter(|&&j| j != i)
+                .filter_map(|&j| books.get(j).map(|b| b.id.clone()))
+                .collect();
+            if let Some(slot) = found.get_mut(i) {
+                *slot = others;
+            }
+        }
+    }
+    for (b, d) in books.iter_mut().zip(found) {
+        b.duplicates = d;
+    }
+}
+
+/// An ISBN as 13 digits (an ISBN-10 is converted), or `None` if it is not one.
+pub fn isbn13(isbn: &str) -> Option<String> {
+    let chars: Vec<char> = isbn
+        .chars()
+        .take(64)
+        .filter(|c| c.is_ascii_digit() || *c == 'X' || *c == 'x')
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    match chars.len() {
+        13 if chars.iter().all(char::is_ascii_digit) => Some(chars.into_iter().collect()),
+        10 if chars.iter().take(9).all(char::is_ascii_digit) => {
+            let body: String = std::iter::once("978".to_owned())
+                .chain(chars.iter().take(9).map(char::to_string))
+                .collect();
+            let sum: u32 = body
+                .chars()
+                .filter_map(|c| c.to_digit(10))
+                .enumerate()
+                .map(|(i, d)| if i % 2 == 0 { d } else { d * 3 })
+                .sum();
+            Some(format!("{body}{}", (10 - sum % 10) % 10))
+        }
+        _ => None,
+    }
+}
+
+/// Title, year and volume, normalized; `None` without a title or a year.
+fn title_key(b: &Book) -> Option<String> {
+    let year = b.year?;
+    let words = |s: &str| -> Vec<String> {
+        normalize(s)
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let title = words(&b.title).join(" ");
+    if title.chars().count() < 3 {
+        return None;
+    }
+    let volume = volume(&words(&b.title)).or_else(|| volume(&words(&b.filename)));
+    Some(format!(
+        "title:{title}|{year}|{}",
+        volume.unwrap_or_default()
+    ))
+}
+
+/// The volume number after "том", "книга", "часть", "vol", "part", "book"…
+fn volume(words: &[String]) -> Option<String> {
+    const MARKERS: [&str; 10] = [
+        "том",
+        "т",
+        "книга",
+        "часть",
+        "выпуск",
+        "vol",
+        "volume",
+        "part",
+        "book",
+        "tome",
+    ];
+    words.windows(2).find_map(|w| match w {
+        [m, v] if MARKERS.contains(&m.as_str()) && is_number(v) => Some(v.clone()),
+        _ => None,
+    })
+}
+
+/// Digits or a Roman numeral.
+fn is_number(w: &str) -> bool {
+    !w.is_empty()
+        && (w.chars().all(|c| c.is_ascii_digit())
+            || w.chars().all(|c| matches!(c, 'i' | 'v' | 'x' | 'l' | 'c')))
+}
+
 /// Normalized fields of one book, ready for matching.
 #[derive(Debug, Clone)]
 struct Entry {
@@ -395,6 +545,151 @@ mod tests {
         merged.merge(c.clone());
         merged.merge(c);
         assert_eq!(merged.books.len(), 4);
+    }
+
+    fn dup_book(id: &str, title: &str, year: Option<i32>, isbn: Option<&str>, file: &str) -> Book {
+        Book {
+            id: id.into(),
+            title: title.into(),
+            year,
+            isbn: isbn.map(str::to_owned),
+            filename: file.into(),
+            ..Book::default()
+        }
+    }
+
+    #[test]
+    fn duplicates_by_isbn_and_by_title_year_and_volume() {
+        let mut books = vec![
+            dup_book(
+                "a",
+                "JavaScript: сильные стороны",
+                Some(2012),
+                Some("978-5-459-01263-7"),
+                "a.pdf",
+            ),
+            dup_book(
+                "b",
+                "JavaScript: Сильные стороны",
+                Some(2012),
+                Some("9785459012637"),
+                "b.pdf",
+            ),
+            // ISBN-10 of the same book as c.
+            dup_book(
+                "c",
+                "Effective C++",
+                Some(2006),
+                Some("5-94074-304-8"),
+                "c.djvu",
+            ),
+            dup_book(
+                "d",
+                "Эффективное использование C++",
+                Some(2006),
+                Some("978-5-94074-304-0"),
+                "d.pdf",
+            ),
+            // Same title and year, told apart by the volume in the file name.
+            dup_book(
+                "e",
+                "Имя нам Легион",
+                Some(2025),
+                None,
+                "Имя_нам_Легион_Том_3_2025.fb2",
+            ),
+            dup_book(
+                "f",
+                "Имя нам Легион",
+                Some(2025),
+                None,
+                "Имя_нам_Легион_Том_8_2025.fb2",
+            ),
+            dup_book(
+                "g",
+                "Чистый код. Создание, анализ и рефакторинг",
+                Some(2013),
+                None,
+                "g.pdf",
+            ),
+            dup_book(
+                "h",
+                "Чистый код: создание, анализ и рефакторинг",
+                Some(2013),
+                Some("978-5-496-00487-9"),
+                "h.pdf",
+            ),
+            // No year: never matched by title.
+            dup_book("i", "Untitled", None, None, "i.pdf"),
+            dup_book("j", "Untitled", None, None, "j.pdf"),
+        ];
+        mark_duplicates(&mut books);
+        fn dups(books: &[Book], id: &str) -> Vec<String> {
+            books
+                .iter()
+                .find(|b| b.id == id)
+                .map(|b| b.duplicates.clone())
+                .unwrap_or_default()
+        }
+        assert_eq!(dups(&books, "a"), ["b"]);
+        assert_eq!(dups(&books, "b"), ["a"]);
+        assert_eq!(dups(&books, "c"), ["d"]);
+        assert!(dups(&books, "e").is_empty());
+        assert!(dups(&books, "f").is_empty());
+        assert_eq!(dups(&books, "g"), ["h"]);
+        assert!(dups(&books, "i").is_empty());
+        assert!(
+            books
+                .iter()
+                .find(|b| b.id == "a")
+                .is_some_and(|b| b.has(Mark::Duplicate))
+        );
+
+        // Marked by hand as not a duplicate: out of every group.
+        if let Some(b) = books.iter_mut().find(|b| b.id == "b") {
+            b.not_duplicate = true;
+        }
+        mark_duplicates(&mut books);
+        assert!(dups(&books, "a").is_empty());
+        assert!(dups(&books, "b").is_empty());
+    }
+
+    #[test]
+    fn isbn_forms() {
+        assert_eq!(isbn13("5-94074-304-8").as_deref(), Some("9785940743040"));
+        assert_eq!(isbn13("0-306-40615-2").as_deref(), Some("9780306406157"));
+        assert_eq!(
+            isbn13("978-0-306-40615-7").as_deref(),
+            Some("9780306406157")
+        );
+        assert_eq!(isbn13("123"), None);
+        assert_eq!(isbn13("978-0-306-40615-X"), None);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn duplicate_detection_never_panics(
+            titles in proptest::collection::vec(".{0,40}", 0..30),
+            isbns in proptest::collection::vec(proptest::option::of("[0-9Xx -]{0,20}"), 0..30),
+        ) {
+            let mut books: Vec<Book> = titles
+                .iter()
+                .enumerate()
+                .map(|(i, t)| Book {
+                    id: i.to_string(),
+                    title: t.clone(),
+                    year: Some(2000 + (i % 3) as i32),
+                    isbn: isbns.get(i).cloned().flatten(),
+                    filename: format!("{t}.pdf"),
+                    ..Book::default()
+                })
+                .collect();
+            mark_duplicates(&mut books);
+            for b in &books {
+                proptest::prop_assert!(!b.duplicates.contains(&b.id));
+                proptest::prop_assert!(b.duplicates.len() < MAX_DUPLICATES);
+            }
+        }
     }
 
     #[test]
