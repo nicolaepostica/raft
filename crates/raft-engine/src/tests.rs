@@ -627,6 +627,47 @@ fn library_folders_are_disabled_renamed_and_moved() {
 }
 
 #[test]
+fn duplicates_are_found_corrected_and_dismissed() {
+    let mut books = catalog();
+    for b in &mut books.books {
+        b.isbn = Some("978-0-306-40615-7".into());
+    }
+    let r = Recorder::default();
+    let mut s = Session::new(books, vec![], Box::new(r.clone()));
+    assert_eq!(
+        s.book("a").map(|b| b.duplicates.clone()),
+        Some(vec!["b".into()])
+    );
+    s.run("filter.mark.toggle", &json!({"mark": "duplicate"}))
+        .unwrap();
+    assert_eq!(s.result_count(), 2);
+    // A corrected ISBN separates them.
+    s.run(
+        "book.edit",
+        &json!({"id": "b", "fields": {"isbn": "978-1-4028-9462-6"}}),
+    )
+    .unwrap();
+    assert_eq!(s.result_count(), 0);
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert_eq!(s.result_count(), 2);
+    // "Not a duplicate" is a mark, saved, undoable, and not a correction.
+    s.run("book.not_duplicate", &json!({"id": "a"})).unwrap();
+    assert_eq!(s.result_count(), 0);
+    assert!(s.book("a").is_some_and(|b| b.not_duplicate && !b.edited));
+    assert!(s.edited_fields("a").is_empty());
+    assert!(
+        r.overrides
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(id, f, v)| id == "a" && *f == Field::NotDuplicate && v.as_deref() == Some("1"))
+    );
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert!(s.book("a").is_some_and(|b| !b.not_duplicate));
+    assert_eq!(s.result_count(), 2);
+}
+
+#[test]
 fn reader_zoom_steps_clamps_and_is_not_undone() {
     let (mut s, _) = session();
     assert!(
