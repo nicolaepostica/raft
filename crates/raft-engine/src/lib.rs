@@ -243,6 +243,7 @@ impl Session {
             language: "ro".to_owned(),
             sources: Vec::new(),
         };
+        raft_search::mark_duplicates(&mut s.catalog.books);
         s.refresh();
         s
     }
@@ -471,6 +472,7 @@ impl Session {
                 .collect(),
             categories: self.base.categories.clone(),
         };
+        raft_search::mark_duplicates(&mut self.catalog.books);
         self.positions = self
             .catalog
             .books
@@ -492,12 +494,7 @@ impl Session {
         self.state
             .overrides
             .get(id)
-            .map(|f| {
-                f.keys()
-                    .copied()
-                    .filter(|f| *f != Field::Reviewed)
-                    .collect()
-            })
+            .map(|f| f.keys().copied().filter(|f| !f.is_mark()).collect())
             .unwrap_or_default()
     }
 
@@ -729,6 +726,8 @@ impl Session {
             }
         }
         if changed {
+            // A corrected ISBN, title or year, or a "not a duplicate" mark.
+            raft_search::mark_duplicates(&mut self.catalog.books);
             self.index = Index::new(&self.catalog);
         }
     }
