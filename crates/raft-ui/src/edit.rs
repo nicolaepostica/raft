@@ -58,6 +58,8 @@ impl Draft {
             Field::Tags => self.tags.clone_from(&other.tags),
             Field::Description => self.description.clone_from(&other.description),
             Field::Reviewed => self.reviewed = other.reviewed,
+            // Not in the form: set from the book page.
+            Field::NotDuplicate => {}
         }
     }
 
@@ -111,6 +113,7 @@ pub fn label(field: Field) -> &'static str {
         Field::Tags => t("Etichete"),
         Field::Description => t("Descriere"),
         Field::Reviewed => t("Verificată"),
+        Field::NotDuplicate => t("Nu e dublură"),
     }
 }
 
