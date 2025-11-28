@@ -1,5 +1,6 @@
 //! Book page: cover, metadata, description and actions.
 
+use raft_doc::Book;
 use serde_json::json;
 
 use crate::i18n::{t, tf};
@@ -304,6 +305,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         }
                     });
                 }
+                duplicates(app, ui, &book);
                 if let Some(p) = app.session.progress(&book.id).cloned() {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
@@ -323,4 +325,57 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
             });
         });
     });
+}
+
+/// The books this one is probably a copy of, to compare and delete the extra
+/// one; or the "not a duplicate" mark when it was set.
+fn duplicates(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
+    if book.duplicates.is_empty() && !book.not_duplicate {
+        return;
+    }
+    ui.add_space(6.0);
+    if !book.duplicates.is_empty() {
+        ui.label(
+            egui::RichText::new(t("Posibile dubluri ale acestei cărți:"))
+                .color(crate::theme::duplicate()),
+        );
+    }
+    let others: Vec<Book> = book
+        .duplicates
+        .iter()
+        .filter_map(|id| app.session.book(id).cloned())
+        .collect();
+    for other in &others {
+        ui.horizontal_wrapped(|ui| {
+            if ui.link(other.display_title()).clicked() {
+                app.act("view.book", json!({ "id": other.id }));
+            }
+            ui.label(egui::RichText::new(compare_line(app, other)).weak());
+        });
+    }
+    let mut not = book.not_duplicate;
+    if ui
+        .checkbox(&mut not, t("nu e dublură"))
+        .on_hover_text(t("Cartea nu mai apare la „dubluri posibile”"))
+        .changed()
+    {
+        app.act("book.not_duplicate", json!({ "id": book.id, "on": not }));
+    }
+}
+
+/// Format, year, size, pages and folder of a book, to tell copies apart.
+fn compare_line(app: &RaftUi, b: &Book) -> String {
+    let mut parts = vec![b.format.slug().to_uppercase()];
+    if let Some(y) = b.year {
+        parts.push(y.to_string());
+    }
+    parts.push(format!("{:.1} MB", b.size as f64 / 1_048_576.0));
+    if let Some(p) = b.pages {
+        parts.push(tf("{0} pag.", &[&p]));
+    }
+    if app.session.loaded_sources().count() > 1 {
+        parts.push(app.session.source_name(&b.source).to_owned());
+    }
+    parts.push(b.filename.clone());
+    parts.join(" · ")
 }
