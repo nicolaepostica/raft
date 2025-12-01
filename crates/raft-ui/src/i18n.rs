@@ -378,6 +378,51 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Adăugate recent", "Recently added", "Недавно добавленные"),
     ("corectată", "edited", "исправлена"),
     ("dublură?", "duplicate?", "дубль?"),
+    ("{0} selectate", "{0} selected", "Выбрано: {0}"),
+    (
+        "Selectează toate ({0})",
+        "Select all ({0})",
+        "Выбрать все ({0})",
+    ),
+    ("Deselectează", "Select none", "Снять выбор"),
+    (
+        "Mută în coș ({0})",
+        "Move to the trash ({0})",
+        "В корзину ({0})",
+    ),
+    ("Selectează: {0}", "Select: {0}", "Выбрать: {0}"),
+    (
+        "Ștergi {0} cărți?",
+        "Delete {0} books?",
+        "Удалить книги ({0})?",
+    ),
+    (
+        "Fișierele se mută în coșul de gunoi, iar cărțile dispar din bibliotecă. Le poți recupera din coș; corecturile și progresul rămân în raft.db.",
+        "The files move to the trash and the books leave the library. You can restore them from the trash; corrections and progress stay in raft.db.",
+        "Файлы перемещаются в корзину, а книги исчезают из библиотеки. Их можно восстановить из корзины; исправления и прогресс остаются в raft.db.",
+    ),
+    (
+        "{0} cărți mutate în coș",
+        "{0} books moved to the trash",
+        "В корзину перемещено книг: {0}",
+    ),
+    (
+        "{0} cărți mutate în coș; {1} nu au putut fi mutate (rămân selectate)",
+        "{0} books moved to the trash; {1} could not be moved (they stay selected)",
+        "В корзину перемещено книг: {0}; не удалось переместить: {1} (они остались выбранными)",
+    ),
+    ("Selectează o carte", "Select a book", "Выбрать книгу"),
+    (
+        "Selectează toate rezultatele",
+        "Select all results",
+        "Выбрать все результаты",
+    ),
+    ("Deselectează tot", "Select none", "Снять выбор"),
+    (
+        "Șterge cărțile selectate",
+        "Delete the selected books",
+        "Удалить выбранные книги",
+    ),
     ("Dubluri posibile", "Possible duplicates", "Возможные дубли"),
     (
         "Cărți cu același ISBN, sau cu același titlu, an și volum, ca alta din bibliotecă",
