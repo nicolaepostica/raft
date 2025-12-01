@@ -60,6 +60,11 @@ pub fn incomplete() -> egui::Color32 {
     color("incomplete")
 }
 
+/// Colour of the "possible duplicate" marks.
+pub fn duplicate() -> egui::Color32 {
+    color("duplicate")
+}
+
 fn visuals(dark: bool) -> egui::Visuals {
     let (mut v, side) = if dark {
         (egui::Visuals::dark(), "_dark")
@@ -146,6 +151,7 @@ mod tests {
             "faint_dark",
             "edited",
             "incomplete",
+            "duplicate",
         ] {
             assert!(value(key).and_then(parse_hex).is_some(), "{key}");
         }
