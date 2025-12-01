@@ -515,6 +515,50 @@ fn interface_language_changes_from_file_settings() {
 }
 
 #[test]
+fn duplicates_are_filtered_compared_and_dismissed() {
+    let mut catalog = app().session.catalog().clone();
+    for b in &mut catalog.books {
+        b.isbn = Some("978-0-306-40615-7".into());
+        b.size = 3 * 1_048_576;
+    }
+    let ui = RaftUi::new(
+        Session::new(catalog, vec![], Box::new(NullBackend)),
+        Box::new(NoFiles),
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.run();
+    h.get_by_label("Dubluri posibile  (2)").click();
+    h.run();
+    assert_eq!(h.state().session.result_count(), 2);
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Posibile dubluri ale acestei cărți:");
+    h.get_by_label_contains("FB2 · 3.0 MB");
+    h.get_by_label("Война и мир").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Book { id: "b".into() });
+    h.get_by_label("nu e dublură").click();
+    h.run();
+    assert!(
+        h.state()
+            .session
+            .book("a")
+            .is_some_and(|b| b.duplicates.is_empty())
+    );
+    assert!(h.state().session.book("b").is_some_and(|b| b.not_duplicate));
+    // Still shown, so the mark can be taken back.
+    h.get_by_label("nu e dublură");
+    assert!(
+        h.query_by_label("Posibile dubluri ale acestei cărți:")
+            .is_none()
+    );
+}
+
+#[test]
 fn library_folders_are_not_in_the_filters() {
     let mut h = harness();
     h.run();
