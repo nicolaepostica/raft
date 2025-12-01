@@ -29,6 +29,10 @@ and Russian, in one folder with a SQLite catalog next to them.
   and volume, are marked *duplicate?* and can be filtered ("Possible duplicates"); the book
   page lists the other copies with format, size, pages and file name, so the extra one can
   be deleted, or the book marked "not a duplicate".
+- **Many books at once:** a tick box at the top right of each cover (on hover, then on every
+  cover once one is ticked; while books are ticked a click on a cover ticks it too, Esc
+  clears). The bar above the grid selects every result or none and moves the ticked books
+  to the trash, after a confirmation listing them.
 - **Several library folders:** add more folders (another disk, an external drive) with
   File → Add a book folder or in File → Settings (Ctrl+,); each has its own `catalog.db`
   made by `build-catalog DIR`. Their books are shown together. In the settings every folder
