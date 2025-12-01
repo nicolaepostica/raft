@@ -204,6 +204,9 @@ pub struct Session {
     settings_tab: &'static str,
     /// Reader zoom: page width (PDF, DjVu) or letter size (EPUB, FB2), 1 = default.
     zoom: f32,
+    /// Books ticked in the library, for actions on many at once (a view state,
+    /// not undone; books that leave the catalog leave it too).
+    selected: std::collections::BTreeSet<BookId>,
 }
 
 impl Session {
@@ -225,6 +228,7 @@ impl Session {
             settings: false,
             settings_tab: commands::SETTINGS_TABS[0],
             zoom: 1.0,
+            selected: Default::default(),
             catalog,
             positions,
             index,
@@ -300,11 +304,26 @@ impl Session {
 
     /// Drops a book from the session (after its file was removed).
     pub(crate) fn forget_book(&mut self, id: &str) {
-        self.loose.books.retain(|b| b.id != id);
+        self.forget_books(&[id.to_owned()]);
+    }
+
+    /// Drops books from the session (after their files were removed), rebuilding once.
+    pub(crate) fn forget_books(&mut self, ids: &[BookId]) {
+        let gone: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+        self.loose.books.retain(|b| !gone.contains(b.id.as_str()));
         for e in &mut self.sources {
-            e.books.books.retain(|b| b.id != id);
+            e.books.books.retain(|b| !gone.contains(b.id.as_str()));
         }
         self.rebuild();
+    }
+
+    /// The books ticked in the library.
+    pub fn selected(&self) -> &std::collections::BTreeSet<BookId> {
+        &self.selected
+    }
+
+    pub fn is_selected(&self, id: &str) -> bool {
+        self.selected.contains(id)
     }
 
     /// The library folders, in the order they were added, with their state.
@@ -481,6 +500,8 @@ impl Session {
             .map(|(i, b)| (b.id.clone(), i))
             .collect();
         self.index = Index::new(&self.catalog);
+        let positions = &self.positions;
+        self.selected.retain(|id| positions.contains_key(id));
         self.refresh();
     }
 
@@ -766,6 +787,7 @@ impl Session {
             "settings": self.settings,
             "settings_tab": self.settings_tab,
             "zoom": self.zoom,
+            "selected": self.selected,
         })
     }
 }
