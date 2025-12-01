@@ -123,6 +123,14 @@ fn not_library(s: &Session) -> Result<(), String> {
     }
 }
 
+fn has_selection(s: &Session) -> Result<(), String> {
+    if s.selected.is_empty() {
+        Err("no books are selected".into())
+    } else {
+        Ok(())
+    }
+}
+
 fn has_filters(s: &Session) -> Result<(), String> {
     let q = s.query();
     if q.filters.is_empty() && q.text.is_empty() {
@@ -324,6 +332,29 @@ static REGISTRY: &[CommandSpec] = &[
         params: r#"{"id": string?, "confirm": true} — moves the file to the trash; not undoable"#,
         record: false,
         ..spec("book.delete", "Șterge cartea", book_delete)
+    },
+    CommandSpec {
+        params: r#"{"id": string, "on": bool?} (default: switch)"#,
+        record: false,
+        ..spec("select.toggle", "Selectează o carte", select_toggle)
+    },
+    CommandSpec {
+        params: "{} — every book in the current results",
+        record: false,
+        ..spec("select.all", "Selectează toate rezultatele", select_all)
+    },
+    CommandSpec {
+        record: false,
+        enabled: has_selection,
+        ..spec("select.clear", "Deselectează tot", |s, _| {
+            s.selected.clear();
+            Ok(Value::Null)
+        })
+    },
+    CommandSpec {
+        params: r#"{"ids": [string]?, "confirm": true} (default: the selected books) — moves the files to the trash; not undoable"#,
+        record: false,
+        ..spec("books.delete", "Șterge cărțile selectate", books_delete)
     },
     CommandSpec {
         params: r#"{"id": string?, "path": string} | {"id": string?, "page": int} | {"id": string?, "catalog": true} — one source"#,
@@ -1223,6 +1254,79 @@ fn book_delete(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     }
     s.forget_book(&id);
     Ok(json!({ "removed": id, "title": book.display_title() }))
+}
+
+/// Most books selected at once (the whole library fits).
+const MAX_SELECTED: usize = 100_000;
+
+fn select_toggle(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = str(p, "id")?.to_owned();
+    if s.catalog.book(&id).is_none() {
+        return Err(EngineError::NotFound(format!("book `{id}`")));
+    }
+    let on = opt_bool(p, "on")?.unwrap_or(!s.selected.contains(&id));
+    if on && s.selected.len() < MAX_SELECTED {
+        s.selected.insert(id);
+    } else {
+        s.selected.remove(&id);
+    }
+    Ok(json!({ "selected": s.selected.len() }))
+}
+
+fn select_all(s: &mut Session, _: &Value) -> Result<Value, EngineError> {
+    let ids: Vec<String> = s.results().map(|b| b.id.clone()).collect();
+    s.selected.extend(ids.into_iter().take(MAX_SELECTED));
+    Ok(json!({ "selected": s.selected.len() }))
+}
+
+fn books_delete(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    if opt_bool(p, "confirm")? != Some(true) {
+        return Err(bad(
+            "deleting moves the files to the trash; pass `confirm: true`",
+        ));
+    }
+    let ids: Vec<String> = match p.get("ids") {
+        None | Some(Value::Null) => s.selected.iter().cloned().collect(),
+        Some(Value::Array(items)) if items.len() <= MAX_SELECTED => items
+            .iter()
+            .map(|v| v.as_str().map(str::to_owned))
+            .collect::<Option<_>>()
+            .ok_or_else(|| bad("`ids` must be a list of book ids"))?,
+        Some(_) => return Err(bad("`ids` must be a list of book ids")),
+    };
+    if ids.is_empty() {
+        return Err(bad("no books to delete"));
+    }
+    let mut removed = Vec::new();
+    let mut failed = Vec::new();
+    for id in &ids {
+        let Some(book) = s.book(id).cloned() else {
+            failed.push(json!({ "id": id, "error": "not found" }));
+            continue;
+        };
+        match s.backend.remove_book(&book) {
+            Ok(()) => removed.push(book.id),
+            Err(e) => failed.push(json!({ "id": id, "title": book.display_title(), "error": e })),
+        }
+    }
+    if s.current_book().is_some_and(|b| removed.contains(&b.id)) {
+        s.state.route = Route::Library;
+    }
+    s.forget_books(&removed);
+    for id in &removed {
+        s.selected.remove(id);
+    }
+    if removed.is_empty() {
+        return Err(EngineError::Backend(format!(
+            "no book was moved to the trash: {}",
+            failed
+                .first()
+                .and_then(|f| f.get("error"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown error")
+        )));
+    }
+    Ok(json!({ "removed": removed.len(), "failed": failed }))
 }
 
 /// Most blocks a text book may report.
