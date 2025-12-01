@@ -668,6 +668,43 @@ fn duplicates_are_found_corrected_and_dismissed() {
 }
 
 #[test]
+fn selected_books_are_deleted_together() {
+    let (mut s, r) = session();
+    assert!(
+        s.run("books.delete", &json!({"confirm": true})).is_err(),
+        "nothing selected"
+    );
+    s.run("select.toggle", &json!({"id": "a"})).unwrap();
+    s.run("select.toggle", &json!({"id": "a"})).unwrap();
+    assert!(s.selected().is_empty());
+    assert!(s.run("select.toggle", &json!({"id": "zzz"})).is_err());
+    s.run("select.all", &Value::Null).unwrap();
+    assert_eq!(s.selected().len(), 2);
+    assert!(
+        s.run("edit.undo", &Value::Null).is_err(),
+        "selection is not undone"
+    );
+    assert!(
+        s.run("books.delete", &Value::Null).is_err(),
+        "needs confirm"
+    );
+    // "b" cannot go to the trash (the recorder refuses it): "a" goes, "b" stays selected.
+    let out = s.run("books.delete", &json!({"confirm": true})).unwrap();
+    assert_eq!(out["removed"], 1);
+    assert_eq!(out["failed"].as_array().map(Vec::len), Some(1));
+    assert!(s.book("a").is_none());
+    assert_eq!(r.removed.lock().unwrap().as_slice(), ["a"]);
+    assert_eq!(s.selected().iter().collect::<Vec<_>>(), ["b"]);
+    assert!(s.run("books.delete", &json!({"confirm": true})).is_err());
+    s.run("select.clear", &Value::Null).unwrap();
+    assert!(s.run("select.clear", &Value::Null).is_err());
+    assert!(
+        s.run("books.delete", &json!({"ids": "a", "confirm": true}))
+            .is_err()
+    );
+}
+
+#[test]
 fn reader_zoom_steps_clamps_and_is_not_undone() {
     let (mut s, _) = session();
     assert!(
