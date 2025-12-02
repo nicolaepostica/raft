@@ -77,6 +77,8 @@ pub struct RaftUi {
     focus_search: bool,
     /// The book whose deletion waits for confirmation.
     confirm_delete: Option<BookId>,
+    /// The "move the selected books to the trash?" dialog is open.
+    confirm_bulk_delete: bool,
     /// The theme last installed in egui (`Some(dark)`).
     themed: Option<bool>,
     /// A cover file chooser that is open, for this book.
@@ -100,6 +102,7 @@ impl RaftUi {
             search,
             focus_search: false,
             confirm_delete: None,
+            confirm_bulk_delete: false,
             picking: None,
             source_names: Default::default(),
             shortcut_filter: String::new(),
@@ -154,6 +157,7 @@ impl RaftUi {
         }
         settings::window(self, ui.ctx());
         self.delete_dialog(ui.ctx());
+        self.bulk_delete_dialog(ui.ctx());
         self.poll_picker(ui.ctx());
     }
 
@@ -180,6 +184,70 @@ impl RaftUi {
             Err(std::sync::mpsc::TryRecvError::Empty) => {
                 ctx.request_repaint_after(std::time::Duration::from_millis(200));
             }
+        }
+    }
+
+    /// Asks before the selected books' files go to the trash.
+    fn bulk_delete_dialog(&mut self, ctx: &egui::Context) {
+        if !self.confirm_bulk_delete {
+            return;
+        }
+        let books: Vec<Book> = self
+            .session
+            .selected()
+            .iter()
+            .filter_map(|id| self.session.book(id).cloned())
+            .collect();
+        if books.is_empty() {
+            self.confirm_bulk_delete = false;
+            return;
+        }
+        let mut close = false;
+        let modal = egui::Modal::new(egui::Id::unique("confirm-bulk-delete")).show(ctx, |ui| {
+            ui.set_max_width(520.0);
+            ui.heading(tf("Ștergi {0} cărți?", &[&books.len()]));
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                for b in &books {
+                    ui.label(format!("• {}  ({})", b.display_title(), b.filename));
+                }
+            });
+            ui.add_space(6.0);
+            ui.add(
+                egui::Label::new(t(
+                    "Fișierele se mută în coșul de gunoi, iar cărțile dispar din bibliotecă. Le poți recupera din coș; corecturile și progresul rămân în raft.db.",
+                ))
+                .wrap(),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button(t("Mută în coș")).clicked() {
+                    // An error is already in the status bar.
+                    if let Ok(out) = self.run("books.delete", json!({ "confirm": true })) {
+                        let removed = out.get("removed").and_then(Value::as_u64).unwrap_or(0);
+                        let failed = out
+                            .get("failed")
+                            .and_then(Value::as_array)
+                            .map_or(0, Vec::len);
+                        self.session.status = Some(if failed == 0 {
+                            tf("{0} cărți mutate în coș", &[&removed])
+                        } else {
+                            tf(
+                                "{0} cărți mutate în coș; {1} nu au putut fi mutate (rămân selectate)",
+                                &[&removed, &failed],
+                            )
+                        });
+                        self.edit = None;
+                    }
+                    close = true;
+                }
+                if ui.button(t("Renunță")).clicked() {
+                    close = true;
+                }
+            });
+        });
+        if close || modal.should_close() {
+            self.confirm_bulk_delete = false;
         }
     }
 
@@ -229,9 +297,15 @@ impl RaftUi {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if self.confirm_delete.is_some() {
+        if self.confirm_delete.is_some() || self.confirm_bulk_delete {
             // Esc closes the dialog instead of going back.
             return;
+        }
+        if !self.session.selected().is_empty()
+            && !self.session.settings_open()
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.act("select.clear", json!({}));
         }
         if self.session.settings_open()
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
