@@ -306,6 +306,9 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
     }
 
     let results: Vec<Book> = app.session.results().cloned().collect();
+    if !app.session.selected().is_empty() {
+        selection_bar(app, ui, results.len());
+    }
     if results.is_empty() {
         ui.add_space(40.0);
         ui.vertical_centered(|ui| ui.label(t("Nicio carte nu se potrivește căutării.")));
@@ -327,6 +330,39 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
                 ui.add_space(GAP);
             }
         });
+}
+
+/// Shown while books are ticked: how many, select all / none, move to the trash.
+fn selection_bar(app: &mut RaftUi, ui: &mut egui::Ui, results: usize) {
+    let n = app.session.selected().len();
+    egui::Frame::new()
+        .fill(ui.visuals().faint_bg_color)
+        .corner_radius(6.0)
+        .inner_margin(egui::Margin::symmetric(10, 6))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.strong(tf("{0} selectate", &[&n]));
+                ui.separator();
+                if ui
+                    .button(tf("Selectează toate ({0})", &[&results]))
+                    .clicked()
+                {
+                    app.act("select.all", json!({}));
+                }
+                if ui.button(t("Deselectează")).on_hover_text("Esc").clicked() {
+                    app.act("select.clear", json!({}));
+                }
+                ui.separator();
+                let delete = egui::Button::new(
+                    egui::RichText::new(tf("Mută în coș ({0})", &[&n]))
+                        .color(ui.visuals().error_fg_color),
+                );
+                if ui.add(delete).clicked() {
+                    app.confirm_bulk_delete = true;
+                }
+            });
+        });
+    ui.add_space(6.0);
 }
 
 fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
@@ -449,8 +485,56 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
             egui::StrokeKind::Inside,
         );
     }
+    // The tick box, top right: on hover, and on every card once one is ticked.
+    let selected = app.session.is_selected(&book.id);
+    let selecting = !app.session.selected().is_empty();
+    let tick_rect = egui::Rect::from_min_size(
+        egui::pos2(cover_rect.right() - 30.0, cover_rect.top() + 6.0),
+        egui::vec2(24.0, 24.0),
+    );
+    let tick = ui.interact(
+        tick_rect,
+        ui.scope_id().with(("tick", &book.id)),
+        egui::Sense::click(),
+    );
+    let label = tf("Selectează: {0}", &[&book.display_title()]);
+    tick.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, selected, &label));
+    if selected || selecting || resp.hovered() || tick.hovered() {
+        let fill = if selected {
+            visuals.selection.bg_fill
+        } else {
+            visuals.extreme_bg_color.gamma_multiply(0.9)
+        };
+        painter.rect_filled(tick_rect, 5.0, fill);
+        painter.rect_stroke(
+            tick_rect,
+            5.0,
+            egui::Stroke::new(1.5, visuals.strong_text_color()),
+            egui::StrokeKind::Inside,
+        );
+        if selected {
+            painter.text(
+                tick_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "✔",
+                egui::FontId::proportional(16.0),
+                visuals.selection.stroke.color,
+            );
+        }
+        if selected {
+            painter.rect_stroke(
+                cover_rect,
+                6.0,
+                egui::Stroke::new(3.0, visuals.selection.bg_fill),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
     let resp = resp.on_hover_text(book.display_title());
-    if resp.clicked() {
+    if tick.clicked() || (selecting && resp.clicked()) {
+        // While books are ticked, a click on a card ticks it too.
+        app.act("select.toggle", json!({ "id": book.id }));
+    } else if resp.clicked() {
         app.act("view.book", json!({ "id": book.id }));
     }
 }
