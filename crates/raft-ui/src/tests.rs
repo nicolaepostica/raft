@@ -384,6 +384,45 @@ impl raft_engine::Backend for Trash {
 }
 
 #[test]
+fn ticked_books_go_to_the_trash_together() {
+    let catalog = app().session.catalog().clone();
+    let ui = RaftUi::new(
+        Session::new(catalog, vec![], Box::new(Trash)),
+        Box::new(NoFiles),
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.run();
+    assert!(h.query_by_label_contains("selectate").is_none());
+    h.get_by_label("Selectează: Rust in Action").click();
+    h.run();
+    h.get_by_label("1 selectate");
+    // Esc clears the selection.
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(h.state().session.selected().is_empty());
+    h.get_by_label("Selectează: Rust in Action").click();
+    h.run();
+    h.get_by_label("Selectează toate (2)").click();
+    h.run();
+    h.get_by_label("2 selectate");
+    h.get_by_label("Mută în coș (2)").click();
+    h.run();
+    h.get_by_label("Ștergi 2 cărți?");
+    h.get_by_label("Renunță").click();
+    h.run();
+    assert_eq!(h.state().session.catalog().books.len(), 2);
+    h.get_by_label("Mută în coș (2)").click();
+    h.run();
+    h.get_by_label("Mută în coș").click();
+    h.run();
+    assert!(h.state().session.catalog().books.is_empty());
+    assert!(h.state().session.selected().is_empty());
+    h.get_by_label("2 cărți mutate în coș");
+}
+
+#[test]
 fn deleting_a_book_asks_first() {
     let catalog = app().session.catalog().clone();
     let ui = RaftUi::new(
