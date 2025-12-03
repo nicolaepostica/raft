@@ -272,6 +272,10 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("filter.source.toggle", "Filtru: sursă", toggle_source)
     },
     CommandSpec {
+        params: r#"{"path": string} (a subfolder: library folder + "/" + its path inside)"#,
+        ..spec("filter.folder.toggle", "Filtru: folder", toggle_folder)
+    },
+    CommandSpec {
         menu: Some("View/Back"),
         shortcut: key("Backspace"),
         also: &[
@@ -723,6 +727,16 @@ fn source_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         if s.state.query.filters.sources.remove(&root) {
             s.state.query.filters.sources.insert(path.clone());
         }
+        // Subfolder filters follow the folder to its new place.
+        let inside = format!("{root}/");
+        let folders = std::mem::take(&mut s.state.query.filters.folders);
+        s.state.query.filters.folders = folders
+            .into_iter()
+            .map(|d| match d.strip_prefix(&inside) {
+                Some(rest) => format!("{path}/{rest}"),
+                None => d,
+            })
+            .collect();
         if !matches!(status, SourceStatus::Loaded)
             && s.current_book().is_some_and(|b| b.source == root)
         {
@@ -768,6 +782,20 @@ fn toggle_source(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         return Err(EngineError::NotFound(format!("source `{root}`")));
     }
     toggle(&mut s.state.query.filters.sources, root);
+    Ok(Value::Null)
+}
+
+fn toggle_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let dir = folder_param(p)?;
+    let known = s
+        .catalog
+        .books
+        .iter()
+        .any(|b| b.folder().as_ref() == Some(&dir));
+    if !known && !s.state.query.filters.folders.contains(&dir) {
+        return Err(EngineError::NotFound(format!("folder `{dir}`")));
+    }
+    toggle(&mut s.state.query.filters.folders, dir);
     Ok(Value::Null)
 }
 

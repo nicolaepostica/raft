@@ -122,7 +122,39 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
                 app.act("filter.category.toggle", json!({ "slug": slug }));
             }
         }
+        folders(app, ui, &facets, &filters);
     });
+}
+
+/// The "Folders" section: the subfolders of the library folders (one per author or
+/// series, say), with their book counts; shown only when there are some.
+fn folders(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    facets: &raft_engine::Facets,
+    filters: &raft_doc::Filters,
+) {
+    if facets.folders.is_empty() && filters.folders.is_empty() {
+        return;
+    }
+    ui.add_space(6.0);
+    let title = tf("Foldere ({0})", &[&facets.folders.len()]);
+    egui::CollapsingHeader::new(title)
+        .id_salt("folders")
+        .default_open(!filters.folders.is_empty())
+        .show(ui, |ui| {
+            for (dir, n) in &facets.folders {
+                let mut on = filters.folders.contains(dir);
+                let label = format!("{}  ({n})", app.session.folder_label(dir));
+                if ui
+                    .checkbox(&mut on, label)
+                    .on_hover_text(dir.as_str())
+                    .changed()
+                {
+                    app.act("filter.folder.toggle", json!({ "path": dir }));
+                }
+            }
+        });
 }
 
 /// A slider with two handles over `lo..=hi`; returns true when a handle moved.

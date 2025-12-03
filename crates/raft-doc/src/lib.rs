@@ -116,6 +116,20 @@ impl Book {
         self.authors.join(", ")
     }
 
+    /// The subfolder of its library folder the file is in, as a full path
+    /// (`/disk/Books/Author`); `None` for a file at the top of the folder.
+    pub fn folder(&self) -> Option<String> {
+        let (dir, _) = self.path.rsplit_once('/')?;
+        if dir.is_empty() {
+            return None;
+        }
+        Some(if self.source.is_empty() {
+            dir.to_owned()
+        } else {
+            format!("{}/{dir}", self.source)
+        })
+    }
+
     pub fn primary_category(&self) -> Option<&str> {
         self.categories.first().map(String::as_str)
     }
@@ -289,6 +303,9 @@ pub struct Filters {
     /// Books from any of these library folders.
     #[serde(default)]
     pub sources: BTreeSet<String>,
+    /// Books in any of these subfolders (full paths, see `Book::folder`).
+    #[serde(default)]
+    pub folders: BTreeSet<String>,
 }
 
 impl Filters {
@@ -296,6 +313,7 @@ impl Filters {
         self.marks.is_empty()
             && self.missing.is_empty()
             && self.sources.is_empty()
+            && self.folders.is_empty()
             && self.categories.is_empty()
             && self.languages.is_empty()
             && self.formats.is_empty()

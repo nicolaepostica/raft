@@ -627,6 +627,47 @@ fn library_folders_are_disabled_renamed_and_moved() {
 }
 
 #[test]
+fn subfolders_filter_and_follow_their_library_folder() {
+    let r = Recorder::default();
+    let mut books = catalog();
+    for (b, path) in books
+        .books
+        .iter_mut()
+        .zip(["Rust/a.pdf", "Tolstoy/War/b.fb2"])
+    {
+        b.source = "/backup/books".into();
+        b.path = path.into();
+    }
+    let mut s =
+        Session::new(books, vec![], Box::new(r.clone())).with_sources(vec!["/backup/books"]);
+    assert_eq!(s.folder_label("/backup/books/Tolstoy/War"), "Tolstoy/War");
+    assert!(
+        s.run(
+            "filter.folder.toggle",
+            &json!({"path": "/backup/books/Nope"})
+        )
+        .is_err()
+    );
+    s.run(
+        "filter.folder.toggle",
+        &json!({"path": "/backup/books/Tolstoy/War"}),
+    )
+    .unwrap();
+    assert_eq!(s.result_count(), 1);
+    assert_eq!(s.facets().folders.len(), 2);
+    // A moved library folder takes its subfolder filters along.
+    s.run(
+        "source.edit",
+        &json!({"path": "/backup/books", "new_path": "/disk3"}),
+    )
+    .unwrap();
+    assert!(s.query().filters.folders.contains("/disk3/Tolstoy/War"));
+    // A removed one drops them.
+    s.run("source.remove", &json!({"path": "/disk3"})).unwrap();
+    assert!(s.query().filters.folders.is_empty());
+}
+
+#[test]
 fn duplicates_are_found_corrected_and_dismissed() {
     let mut books = catalog();
     for b in &mut books.books {

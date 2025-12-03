@@ -257,10 +257,17 @@ enum Skip {
     /// Marks and missing fields.
     Marks,
     Source,
+    Folder,
 }
 
 fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
     if skip != Skip::Source && !f.sources.is_empty() && !f.sources.contains(&book.source) {
+        return false;
+    }
+    if skip != Skip::Folder
+        && !f.folders.is_empty()
+        && !book.folder().is_some_and(|d| f.folders.contains(&d))
+    {
         return false;
     }
     if skip != Skip::Marks {
@@ -388,6 +395,9 @@ pub struct Facets {
     pub missing: Vec<(Field, usize)>,
     /// Books per library folder (ignoring the source filter).
     pub sources: Vec<(String, usize)>,
+    /// Books per subfolder (ignoring the folder filter), by path; books at the top
+    /// of a library folder are not counted.
+    pub folders: Vec<(String, usize)>,
 }
 
 /// Facet counts for `query`: each facet is counted with every other filter applied.
@@ -401,6 +411,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
     let mut marks: BTreeMap<Mark, usize> = BTreeMap::new();
     let mut missing: BTreeMap<Field, usize> = BTreeMap::new();
     let mut sources: BTreeMap<String, usize> = BTreeMap::new();
+    let mut folders: BTreeMap<String, usize> = BTreeMap::new();
     let no_years = Filters {
         year_min: None,
         year_max: None,
@@ -429,6 +440,11 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         }
         if passes(b, f, Skip::Source) {
             *sources.entry(b.source.clone()).or_default() += 1;
+        }
+        if let Some(d) = b.folder()
+            && passes(b, f, Skip::Folder)
+        {
+            *folders.entry(d).or_default() += 1;
         }
         if passes(b, f, Skip::Marks) {
             for m in Mark::ALL.into_iter().filter(|m| b.has(*m)) {
@@ -459,6 +475,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         marks: marks.into_iter().collect(),
         missing: missing.into_iter().collect(),
         sources: sources.into_iter().collect(),
+        folders: folders.into_iter().collect(),
     }
 }
 
@@ -525,6 +542,35 @@ mod tests {
             text: text.into(),
             ..Query::default()
         }
+    }
+
+    #[test]
+    fn filters_and_counts_subfolders() {
+        let mut c = sample();
+        for (b, path) in c
+            .books
+            .iter_mut()
+            .zip(["A/x.pdf", "A/y.pdf", "B/C/z.pdf", "w.pdf"])
+        {
+            b.source = "/lib".into();
+            b.path = path.into();
+        }
+        assert_eq!(c.books[2].folder().as_deref(), Some("/lib/B/C"));
+        assert_eq!(c.books[3].folder(), None);
+        let i = Index::new(&c);
+        let mut query = Query::default();
+        let f = facets(&c, &i, &query, &[]);
+        assert_eq!(
+            f.folders,
+            vec![("/lib/A".into(), 2), ("/lib/B/C".into(), 1)]
+        );
+        query.filters.folders.insert("/lib/A".into());
+        let mut found = search(&c, &i, &query, &[]);
+        found.sort_unstable();
+        assert_eq!(found, vec![0, 1]);
+        // The folder facet ignores its own filter.
+        assert_eq!(facets(&c, &i, &query, &[]).folders.len(), 2);
+        assert!(!query.filters.is_empty());
     }
 
     #[test]

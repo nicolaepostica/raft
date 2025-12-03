@@ -243,6 +243,19 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                             t("Mărime"),
                             format!("{:.1} MB", book.size as f64 / 1_048_576.0),
                         );
+                        if let Some(dir) = book.folder() {
+                            ui.label(egui::RichText::new(t("Folder")).weak());
+                            if ui
+                                .link(app.session.folder_label(&dir))
+                                .on_hover_text(t("Arată cărțile din folder"))
+                                .clicked()
+                            {
+                                app.act("filter.clear", json!({}));
+                                app.act("filter.folder.toggle", json!({ "path": dir }));
+                                app.act("view.library", json!({}));
+                            }
+                            ui.end_row();
+                        }
                     });
                 ui.add_space(8.0);
                 ui.horizontal_wrapped(|ui| {

@@ -356,6 +356,26 @@ impl Session {
             .count()
     }
 
+    /// A subfolder as shown: its path inside its library folder (`Author/Series`),
+    /// with the library folder's name when several are loaded.
+    pub fn folder_label(&self, dir: &str) -> String {
+        let source = self.sources.iter().filter(|e| e.loaded()).find(|e| {
+            dir.strip_prefix(e.source.path.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+        });
+        match source {
+            Some(e) => {
+                let rest = dir.get(e.source.path.len() + 1..).unwrap_or(dir);
+                if self.loaded_sources().count() > 1 {
+                    format!("{rest} · {}", e.source.display_name())
+                } else {
+                    rest.to_owned()
+                }
+            }
+            None => dir.to_owned(),
+        }
+    }
+
     /// The name shown for a book's folder.
     pub fn source_name<'a>(&'a self, root: &'a str) -> &'a str {
         self.source(root).map_or(root, |e| e.source.display_name())
@@ -442,6 +462,12 @@ impl Session {
     /// Leaves a folder that is no longer shown: its filter, and its book if open.
     fn unshow_source(&mut self, root: &str) {
         self.state.query.filters.sources.remove(root);
+        let inside = format!("{root}/");
+        self.state
+            .query
+            .filters
+            .folders
+            .retain(|d| !d.starts_with(&inside));
         if self.current_book().is_some_and(|b| b.source == root) {
             self.state.route = Route::Library;
         }

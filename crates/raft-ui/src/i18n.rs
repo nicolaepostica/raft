@@ -170,6 +170,14 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ),
     ("Filtru: sursă", "Filter: source", "Фильтр: источник"),
     ("Sursă", "Source", "Источник"),
+    ("Folder", "Folder", "Папка"),
+    ("Foldere ({0})", "Folders ({0})", "Папки ({0})"),
+    (
+        "Arată cărțile din folder",
+        "Show the books in the folder",
+        "Показать книги из папки",
+    ),
+    ("Filtru: folder", "Filter: folder", "Фильтр: папка"),
     (
         "Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)",
         "Add a book folder (with a catalog.db made by build-catalog)",

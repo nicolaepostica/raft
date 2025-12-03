@@ -598,6 +598,50 @@ fn duplicates_are_filtered_compared_and_dismissed() {
 }
 
 #[test]
+fn subfolders_are_a_filter_and_a_link_on_the_book_page() {
+    let mut catalog = app().session.catalog().clone();
+    for (b, path) in catalog
+        .books
+        .iter_mut()
+        .zip(["Rust/a.pdf", "Tolstoy/b.fb2"])
+    {
+        b.source = "/backup/books".into();
+        b.path = path.into();
+    }
+    let session =
+        Session::new(catalog, vec![], Box::new(NullBackend)).with_sources(vec!["/backup/books"]);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 1400.0))
+        .build_ui_state(
+            |ui, app: &mut RaftUi| app.show(ui),
+            RaftUi::new(session, Box::new(NoFiles)),
+        );
+    h.run();
+    h.get_by_label("Foldere (2)").click();
+    h.run();
+    h.get_by_label("Tolstoy  (1)").click();
+    h.run();
+    assert_eq!(h.state().session.result_count(), 1);
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Rust").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Library);
+    assert_eq!(
+        h.state()
+            .session
+            .query()
+            .filters
+            .folders
+            .iter()
+            .collect::<Vec<_>>(),
+        ["/backup/books/Rust"]
+    );
+}
+
+#[test]
 fn library_folders_are_not_in_the_filters() {
     let mut h = harness();
     h.run();
