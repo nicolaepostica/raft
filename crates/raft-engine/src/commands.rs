@@ -240,7 +240,6 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("view.language", "Schimbă limba interfeței", view_language)
     },
     CommandSpec {
-        menu: Some("File/Add library folder"),
         params: r#"{"path": string} (a folder with catalog.db, made by build-catalog DIR)"#,
         record: false,
         ..spec("source.add", "Adaugă un folder cu cărți", source_add)

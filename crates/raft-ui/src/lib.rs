@@ -373,12 +373,7 @@ impl RaftUi {
             Ok(()) => resp,
         };
         if resp.clicked() {
-            if spec.id == "source.add" {
-                // Needs a folder: ask for it first.
-                add_folder(self);
-            } else {
-                self.act(spec.id, Value::Null);
-            }
+            self.act(spec.id, Value::Null);
             ui.close();
         }
     }

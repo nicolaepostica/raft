@@ -34,9 +34,9 @@ and Russian, in one folder with a SQLite catalog next to them.
   clears). The bar above the grid selects every result or none and moves the ticked books
   to the trash, after a confirmation listing them.
 - **Several library folders:** add more folders (another disk, an external drive) with
-  File → Add a book folder or in File → Settings (Ctrl+,); each has its own `catalog.db`
-  made by `build-catalog DIR`. Their books are shown together. In the settings every folder
-  can be renamed, switched off (its books are hidden, it stays
+  File → Settings (Ctrl+,) → Add a folder; each has its own `catalog.db` made by
+  `build-catalog DIR`. Their books are shown together. In the settings every folder can be
+  renamed, switched off (its books are hidden, it stays
   in the list), pointed to a new place after a move (progress and corrections stay) or
   removed; a folder on an unplugged disk shows as unavailable and loads again when it is back.
 - **Interface:** Romanian, English or Russian, light or dark theme (both in File → Settings);
