@@ -8,6 +8,8 @@ Usage:
     rename-books --no-ai         # heuristics only, without the `claude` CLI
 
 "New book" = any .pdf/.epub/.fb2/.djvu file whose name does NOT already end in _YYYY.ext.
+A volume of a series keeps its number, after the title: Темный_Лекарь_Том_1_2025.fb2 (from the
+FB2/EPUB series metadata, the AI, or "Том 3" / "Книга 2" / "Vol. 4" / "#2" in the title or name).
 Files you don't want touched go into DIR/.rename_ignore (one name per line).
 Every operation is appended to DIR/.rename_log.tsv.
 """
@@ -75,6 +77,11 @@ def extract(path):
             meta['Title'] = (re.findall(r'<dc:title[^>]*>([^<]*)', t) or [''])[0]
             meta['Author'] = (re.findall(r'<dc:creator[^>]*>([^<]*)', t) or [''])[0]
             meta['Date'] = ' '.join(re.findall(r'<dc:date[^>]*>([^<]*)', t))
+            m = (re.search(r'name="calibre:series_index"\s+content="([^"]+)"', t)
+                 or re.search(r'content="([^"]+)"\s+name="calibre:series_index"', t)
+                 or re.search(r'<meta[^>]*property="group-position"[^>]*>([^<]+)<', t))
+            if m:
+                meta['SeriesNumber'] = m.group(1).strip()
             text = t[:4000]
             for n in z.namelist()[:15]:
                 if re.search(r'\.x?html?$', n):
@@ -84,6 +91,10 @@ def extract(path):
     elif ext == '.fb2':
         t = open(path, encoding='utf8', errors='ignore').read(200000)
         meta['Title'] = (re.findall(r'<book-title>([^<]*)', t) or [''])[0]
+        # <sequence name="Темный Лекарь" number="1"/> in <title-info>
+        m = re.search(r'<sequence\b[^>]*\bnumber="([^"]+)"', t)
+        if m:
+            meta['SeriesNumber'] = m.group(1).strip()
         meta['Date'] = ' '.join(re.findall(r'<(?:date|year)[^>]*>([^<]*)', t))
         text = re.sub(r'<[^>]+>', ' ', t[:20000])
     elif ext == '.djvu':
@@ -131,7 +142,9 @@ def ask_claude(meta, text, filename, model):
         'Drop only long marketing subtitles, author names and edition notes.\n'
         '- "year": the publication year of THIS edition (for translations: the year of the translation). '
         'Use null if it cannot be determined from the text, metadata or file name.\n'
-        'Reply with ONLY one line of JSON: {"is_book": true|false, "title": "...", "year": 2023}\n\n'
+        '- "volume": if the book is one volume of a series (Том 3, Книга 2, Часть 1, Vol. 2, Book 4...), its number '
+        'as an integer, else null. Leave the volume out of "title".\n'
+        'Reply with ONLY one line of JSON: {"is_book": true|false, "title": "...", "year": 2023, "volume": null}\n\n'
         f'FILE NAME: {filename}\nMETADATA: {json.dumps(meta, ensure_ascii=False)}\n---TEXT---\n{text[:5000]}\n---END---'
     )
     try:
@@ -147,6 +160,75 @@ def ask_claude(meta, text, filename, model):
 def year_from_name(filename):
     ys = [int(y) for y in re.findall(r'(?<!\d)((?:19[5-9]|20[0-4])\d)(?!\d)', os.path.splitext(filename)[0]) if int(y) <= NOW_YEAR]
     return ys[-1] if ys else None
+
+
+# Words that announce a volume, as they appear in titles and file names.
+VOLUME_WORDS = r'(?:том|т\.|книга|кн\.|часть|ч\.|выпуск|vol(?:ume)?\.?|book|part|tome)'
+ROMAN = {'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5, 'vi': 6, 'vii': 7, 'viii': 8, 'ix': 9, 'x': 10,
+         'xi': 11, 'xii': 12, 'xiii': 13, 'xiv': 14, 'xv': 15, 'xvi': 16, 'xvii': 17, 'xviii': 18,
+         'xix': 19, 'xx': 20}
+
+
+def volume_number(value):
+    """An integer volume from '3', '3.0', 'III'; None for anything else (0, ranges, text)."""
+    v = str(value or '').strip().lower()
+    if re.fullmatch(r'\d{1,3}(?:\.0+)?', v):
+        n = int(float(v))
+        return n if 0 < n < 1000 else None
+    return ROMAN.get(v)
+
+
+def volume_from_text(text):
+    """(word, number) from 'Книга 2', 'Том III', 'Vol. 4', '#2' in a title or file name."""
+    t = os.path.splitext(text)[0] if re.search(r'\.[a-z0-9]{2,4}$', text, re.I) else text
+    t = t.replace('_', ' ')
+    m = re.search(rf'(?i)(?<![\w]){VOLUME_WORDS}\s*([0-9]{{1,3}}|[ivx]{{1,5}})(?![\w])', t)
+    if m and volume_number(m.group(1)):
+        word = re.match(r'(?i)[^\s\d.]+', m.group(0)).group(0).rstrip('.')
+        return word, volume_number(m.group(1))
+    m = re.search(r'#\s*(\d{1,3})\b', t)
+    if m:
+        return None, volume_number(m.group(1))
+    return None
+
+
+def find_volume(meta, ai, filename, title):
+    """(word or None, number) of a book that is a volume of a series, else None. The number comes
+    from the file's own metadata, then the AI, then the title or the file name; the word ('Книга',
+    'Часть') from the title or the file name when they have one."""
+    from_text = volume_from_text(title or '') or volume_from_text(os.path.basename(filename))
+    for cand in (meta.get('SeriesNumber'), (ai or {}).get('volume')):
+        n = volume_number(cand)
+        if n:
+            word = from_text[0] if from_text and from_text[1] == n else None
+            return word, n
+    if from_text:
+        return from_text
+    # '01. Темный Лекарь 1.fb2': a leading number and the same number at the end
+    base = os.path.splitext(os.path.basename(filename))[0]
+    m = re.match(r'^(\d{1,3})\s*[.)_-]\s*\S.*?\s(\d{1,3})$', base)
+    if m and int(m.group(1)) == int(m.group(2)):
+        return None, int(m.group(1))
+    return None
+
+
+def strip_volume(title, n):
+    """The title without its own volume mark ('Темный Лекарь 1', 'Император #2', 'X. Книга 2')."""
+    roman = {v: k for k, v in ROMAN.items()}.get(n, '')
+    nums = rf'(?:0*{n}|{roman})' if roman else rf'0*{n}'
+    t = re.sub(rf'(?i)[\s.,:;—–-]*(?:{VOLUME_WORDS}\s*)?#?\s*{nums}\s*$', '', title.strip())
+    return t.strip(' .,:;—–-') or title
+
+
+def volume_title(title, vol):
+    """'Темный Лекарь' + (None, 1) -> 'Темный Лекарь Том 1'; Latin titles get 'Vol'."""
+    word, n = vol
+    if not word:
+        word = 'Том' if re.search(r'[А-Яа-яЁё]', title) else 'Vol'
+    word = word[:1].upper() + word[1:].lower()
+    if word.lower() in ('т', 'кн', 'ч'):
+        word = {'т': 'Том', 'кн': 'Книга', 'ч': 'Часть'}[word.lower()]
+    return f'{strip_volume(title, n)} {word} {n}'
 
 
 def sanitize(title):
@@ -230,11 +312,14 @@ def main():
         res = None if a.no_ai else ask_claude(meta, text, f, a.model)
         if res is not None and res.get('is_book') is False:
             return f, h, None, 'does not look like a book'
-        title = (res or {}).get('title') or guess_title(meta, f)
+        title = str((res or {}).get('title') or guess_title(meta, f))
         year = (res or {}).get('year') or year_from_name(f) or guess_year(meta, text)
         if not year:
             return f, h, None, f'the year could not be found [title: {title}]'
-        return f, h, (str(title), int(year), 'AI' if res else 'heuristic'), None
+        vol = find_volume(meta, res, f, title)
+        if vol:   # a volume of a series keeps its number: Темный_Лекарь_Том_1_2025
+            title = volume_title(title, vol)
+        return f, h, (title, int(year), 'AI' if res else 'heuristic'), None
 
     print(f'Analysing {len(analyse)} file(s), {a.jobs} in parallel...', flush=True)
     with concurrent.futures.ThreadPoolExecutor(a.jobs) as ex:
