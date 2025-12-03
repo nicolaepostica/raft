@@ -8,6 +8,7 @@ Usage:
     build-catalog --no-ai            # metadata from the files only, without the `claude` CLI
     build-catalog --json             # also export DIR/catalog.json
     build-catalog --clean-only       # only strip download-site addresses from the indexed text
+    build-catalog --fix-categories   # only put the fiction categories right (no AI)
 
 The script can be run any number of times: a book is identified by the md5 of its content, so
 renaming or moving a file keeps its cover and metadata. Deleted books leave the catalog.
@@ -66,8 +67,30 @@ CATEGORIES = {
     'business': 'Business, economie, finanțe',
     'history-bio': 'Istorie, biografii',
     'fiction': 'Beletristică',
+    'fantasy': 'Fantasy',
+    'litrpg': 'LitRPG',
+    'sci-fi': 'Science-fiction',
+    'alt-history': 'Istorie alternativă, popadanți',
     'other': 'Altele',
 }
+
+# Fiction genres, recognised from the tags the AI gave (any script, any spelling seen so far).
+GENRE_TAGS = {
+    'fantasy': {'fantasy', 'urban-fantasy', 'dark-fantasy', 'фэнтези', 'isekai', 'magic-academy',
+                'necromancy', 'necromancer', 'cultivation', 'dragons'},
+    'litrpg': {'litrpg', 'литрпг', 'gamelit', 'game-system', 'virtual-reality', 'progression'},
+    'sci-fi': {'science-fiction', 'sci-fi', 'scifi', 'space-opera', 'aliens', 'post-apocalyptic',
+               'cyberpunk', 'фантастика', 'научная-фантастика', 'space'},
+    'alt-history': {'alternate-history', 'alternative-history', 'попаданцы', 'попаданец',
+                    'popadancy', 'popadanets', 'time-travel'},
+}
+# Tags that make a book a novel even when the AI did not put it under 'fiction'. Only
+# unambiguous ones: 'virtual-reality' or 'space' also tag technical books (a Unity cookbook).
+FICTION_TAGS = {'fiction', 'novel', 'russian-fiction', 'web-novel', 'fanfiction',
+                'fantasy', 'urban-fantasy', 'dark-fantasy', 'фэнтези', 'isekai', 'litrpg', 'литрпг',
+                'gamelit', 'science-fiction', 'sci-fi', 'space-opera', 'post-apocalyptic', 'фантастика',
+                'alternate-history', 'alternative-history', 'попаданцы', 'popadancy'}
+GENRES = list(GENRE_TAGS)
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS books(
@@ -213,6 +236,8 @@ def ask_ai(meta, text, filename, model):
         '- language: ISO 639-1 code of the book text (ru, en, ro, ...).\n'
         '- publisher, isbn: null if not found.\n'
         '- categories: 1 to 3 slugs from this fixed list, most relevant first:\n' + cats + '\n'
+        '  A novel or a story: "fiction" first, then its genres (fantasy, litrpg, sci-fi, alt-history); '
+        'never "other" for fiction.\n'
         '- tags: 2 to 8 short lowercase keywords (technologies, topics) in English.\n'
         '- description: 2-3 sentences in ROMANIAN (with correct diacritics) about what the book covers and for whom.\n\n'
         f'FILE NAME: {filename}\nMETADATA: {json.dumps(meta, ensure_ascii=False)}\n---TEXT---\n{text[:5000]}\n---END---'
@@ -263,6 +288,38 @@ def title_from_filename(f):
 
 # ---------- main ----------
 
+def fiction_categories(cats, tags, fmt):
+    """The categories of a book, with fiction put right: a novel gets 'fiction' first and up to
+    two genres from its tags, nothing else. Any other book is returned unchanged."""
+    tags = [t.lower() for t in tags]
+    genres_in = [c for c in cats if c in GENRE_TAGS]
+    is_fiction = ('fiction' in cats or genres_in or any(t in FICTION_TAGS for t in tags)
+                  or (fmt == 'fb2' and cats == ['other']))
+    if not is_fiction:
+        return cats
+    genres = list(genres_in)
+    for t in tags:   # in the AI's order of relevance
+        for g, words in GENRE_TAGS.items():
+            if t in words and g not in genres:
+                genres.append(g)
+    # Other subjects on a novel ('self-development' on a LitRPG book) are the AI's guesses.
+    return (['fiction'] + genres)[:3]
+
+
+def fix_categories(db):
+    """Applies fiction_categories to every book; returns how many changed."""
+    changed = 0
+    for bid, cats, tags, fmt in db.execute('SELECT id, categories, tags, format FROM books').fetchall():
+        old = json.loads(cats or '[]')
+        new = fiction_categories(old, json.loads(tags or '[]'), fmt)
+        if new != old:
+            db.execute('UPDATE books SET categories=? WHERE id=?', (json.dumps(new), bid))
+            db.execute('UPDATE books_fts SET categories=? WHERE id=?', (' '.join(new), bid))
+            changed += 1
+    db.commit()
+    return changed
+
+
 def clean_sites(db):
     """Strips download-site addresses (page footers) from the indexed text."""
     rows = db.execute('SELECT rowid, content FROM books_fts').fetchall()
@@ -287,6 +344,8 @@ def main():
     ap.add_argument('--json', action='store_true', help='also export catalog.json')
     ap.add_argument('--clean-only', action='store_true',
                     help='only strip download-site addresses from the indexed text')
+    ap.add_argument('--fix-categories', action='store_true',
+                    help='only put the fiction categories right (from the tags, without AI)')
     a = ap.parse_args()
 
     root = os.path.realpath(a.dir)
@@ -297,6 +356,9 @@ def main():
     db.executemany('INSERT OR REPLACE INTO categories VALUES(?,?)', CATEGORIES.items())
     if a.clean_only:
         print(f'Download-site addresses stripped from the text of {clean_sites(db)} books.')
+        return
+    if a.fix_categories:
+        print(f'Fiction categories put right on {fix_categories(db)} books.')
         return
 
     files = book_files(root)
@@ -382,6 +444,9 @@ def main():
             os.remove(c)
     db.commit()
 
+    fixed = fix_categories(db)
+    if fixed:
+        print(f'Fiction categories put right on {fixed} books.')
     cleaned = clean_sites(db)
     if cleaned:
         print(f'Download-site addresses stripped from the text of {cleaned} books.')

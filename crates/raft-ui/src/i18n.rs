@@ -757,6 +757,14 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "История, биографии",
     ),
     ("Beletristică", "Fiction", "Художественная литература"),
+    ("Fantasy", "Fantasy", "Фэнтези"),
+    ("LitRPG", "LitRPG", "ЛитРПГ"),
+    ("Science-fiction", "Science fiction", "Научная фантастика"),
+    (
+        "Istorie alternativă, popadanți",
+        "Alternate history, isekai",
+        "Альтернативная история, попаданцы",
+    ),
     ("Altele", "Other", "Другое"),
 ];
 
