@@ -35,7 +35,8 @@ and Russian, in one folder with a SQLite catalog next to them.
   to the trash, after a confirmation listing them.
 - **Several library folders:** add more folders (another disk, an external drive) with
   File → Settings (Ctrl+,) → Add a folder; each has its own `catalog.db` made by
-  `build-catalog DIR`. Their books are shown together. In the settings every folder can be
+  `build-catalog DIR` (books in subfolders too, e.g. one folder per author; the files are not
+  renamed or moved). Their books are shown together. In the settings every folder can be
   renamed, switched off (its books are hidden, it stays
   in the list), pointed to a new place after a move (progress and corrections stay) or
   removed; a folder on an unplugged disk shows as unavailable and loads again when it is back.

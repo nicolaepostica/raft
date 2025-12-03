@@ -238,6 +238,19 @@ def ask_ai(meta, text, filename, model):
     return d
 
 
+def book_files(root):
+    """Book files under root, as paths relative to it ('Author/Title.fb2'), in subfolders too
+    (a folder organised by author); covers/ and hidden folders are skipped."""
+    out = []
+    for d, dirs, names in os.walk(root):
+        rel = os.path.relpath(d, root)
+        dirs[:] = sorted(x for x in dirs if not x.startswith('.') and not (rel == '.' and x == 'covers'))
+        for n in names:
+            if os.path.splitext(n)[1].lower() in EXTS and os.path.isfile(os.path.join(d, n)):
+                out.append(n if rel == '.' else os.path.join(rel, n).replace(os.sep, '/'))
+    return sorted(out)
+
+
 def year_from_filename(f):
     m = re.search(r'_((?:19|20)\d\d)(?:_\d+)?\.[A-Za-z0-9]+$', f)
     return int(m.group(1)) if m else None
@@ -286,8 +299,7 @@ def main():
         print(f'Download-site addresses stripped from the text of {clean_sites(db)} books.')
         return
 
-    files = sorted(f for f in os.listdir(root)
-                   if os.path.splitext(f)[1].lower() in EXTS and os.path.isfile(os.path.join(root, f)))
+    files = book_files(root)
     known = {r[0]: r[1:] for r in db.execute('SELECT path, id, size, mtime, cover FROM books')}
 
     # 1) identify every file (md5 only when it is new or changed)
@@ -334,17 +346,18 @@ def main():
             fmt = os.path.splitext(f)[1].lower().lstrip('.')
             if has_ai:   # a known book, only moved or renamed
                 db.execute('UPDATE books SET path=?, filename=?, size=?, mtime=?, cover=COALESCE(?,cover), '
-                           'updated_at=? WHERE id=?', (f, f, st.st_size, st.st_mtime, cover, now(), bid))
+                           'updated_at=? WHERE id=?',
+                           (f, os.path.basename(f), st.st_size, st.st_mtime, cover, now(), bid))
                 print(f'[{done}/{len(todo)}] moved: {f}', flush=True)
             else:
                 res = res or {}
-                title = res.get('title') or title_from_filename(f)
-                year = res.get('year') or year_from_filename(f)
+                title = res.get('title') or title_from_filename(os.path.basename(f))
+                year = res.get('year') or year_from_filename(os.path.basename(f))
                 cats, tags = res.get('categories') or ['other'], res.get('tags') or []
                 authors = res.get('authors') or ([meta['Author']] if meta.get('Author') else [])
                 old = db.execute('SELECT added_at FROM books WHERE id=?', (bid,)).fetchone()
                 db.execute('INSERT OR REPLACE INTO books VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (
-                    bid, f, f, fmt, st.st_size, pages, title, json.dumps(authors, ensure_ascii=False), year,
+                    bid, f, os.path.basename(f), fmt, st.st_size, pages, title, json.dumps(authors, ensure_ascii=False), year,
                     res.get('language'), res.get('publisher'), res.get('isbn'),
                     json.dumps(cats), json.dumps(tags, ensure_ascii=False), res.get('description'),
                     cover, st.st_mtime, old[0] if old else now(), now()))
