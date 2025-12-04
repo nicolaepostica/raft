@@ -90,6 +90,12 @@ FICTION_TAGS = {'fiction', 'novel', 'russian-fiction', 'web-novel', 'fanfiction'
                 'fantasy', 'urban-fantasy', 'dark-fantasy', 'фэнтези', 'isekai', 'litrpg', 'литрпг',
                 'gamelit', 'science-fiction', 'sci-fi', 'space-opera', 'post-apocalyptic', 'фантастика',
                 'alternate-history', 'alternative-history', 'попаданцы', 'popadancy'}
+# Tags that mark a reference or subject book, so an FB2 the AI put under 'other' alone is not
+# taken for a novel (a medical handbook series came in as FB2 + 'other').
+NONFICTION_TAGS = {'medicine', 'medical', 'medical-reference', 'reference', 'encyclopedia',
+                   'handbook', 'textbook', 'dictionary', 'manual', 'tutorial', 'cookbook',
+                   'diagnostics', 'diagnosis', 'treatment', 'pharmacology', 'first-aid',
+                   'medicina', 'медицина', 'справочник', 'энциклопедия', 'учебник', 'словарь'}
 GENRES = list(GENRE_TAGS)
 
 SCHEMA = '''
@@ -294,7 +300,8 @@ def fiction_categories(cats, tags, fmt):
     tags = [t.lower() for t in tags]
     genres_in = [c for c in cats if c in GENRE_TAGS]
     is_fiction = ('fiction' in cats or genres_in or any(t in FICTION_TAGS for t in tags)
-                  or (fmt == 'fb2' and cats == ['other']))
+                  or (fmt == 'fb2' and cats == ['other']
+                      and not any(t in NONFICTION_TAGS for t in tags)))
     if not is_fiction:
         return cats
     genres = list(genres_in)
