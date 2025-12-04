@@ -1,4 +1,5 @@
-//! Library screen: filters panel, search bar, "continue reading" and the book grid.
+//! Library screen: two tabs, the library (filters panel, search bar, book grid) and
+//! "continue reading" (the started books, most recently read first).
 
 use raft_doc::edits::Field;
 use raft_doc::{Book, Format, Mark, Sort};
@@ -308,35 +309,30 @@ fn badge(painter: &egui::Painter, pos: egui::Pos2, text: &str, fill: egui::Color
     rect.height()
 }
 
+/// The tab strip above the library screen.
+pub fn tabs(app: &mut RaftUi, ui: &mut egui::Ui) {
+    let current = app.session.library_tab();
+    let reading = app.session.continue_reading(usize::MAX).len();
+    ui.horizontal(|ui| {
+        let tabs = [
+            ("library", "view.tab.library", t("Bibliotecă").to_owned()),
+            (
+                "reading",
+                "view.tab.reading",
+                tf("Continuă lectura ({0})", &[&reading]),
+            ),
+        ];
+        for (tab, command, label) in tabs {
+            if ui.selectable_label(tab == current, label).clicked() && tab != current {
+                app.act(command, json!({}));
+            }
+        }
+    });
+}
+
 pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
     search_bar(app, ui);
     ui.add_space(8.0);
-
-    let show_continue =
-        app.session.query().text.is_empty() && app.session.query().filters.is_empty();
-    let recent: Vec<Book> = if show_continue {
-        app.session
-            .continue_reading(12)
-            .into_iter()
-            .cloned()
-            .collect()
-    } else {
-        Vec::new()
-    };
-    if !recent.is_empty() {
-        ui.strong(t("Continuă lectura"));
-        egui::ScrollArea::horizontal()
-            .id_salt("continue")
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    for book in &recent {
-                        card(app, ui, book);
-                    }
-                });
-            });
-        ui.separator();
-    }
-
     let results: Vec<Book> = app.session.results().cloned().collect();
     if !app.session.selected().is_empty() {
         selection_bar(app, ui, results.len());
@@ -346,16 +342,42 @@ pub fn library(app: &mut RaftUi, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| ui.label(t("Nicio carte nu se potrivește căutării.")));
         return;
     }
+    grid(app, ui, "grid", &results);
+}
+
+/// The "continue reading" tab: every started book, most recently read first.
+pub fn reading(app: &mut RaftUi, ui: &mut egui::Ui) {
+    let books: Vec<Book> = app
+        .session
+        .continue_reading(usize::MAX)
+        .into_iter()
+        .cloned()
+        .collect();
+    ui.add_space(8.0);
+    if books.is_empty() {
+        ui.add_space(40.0);
+        ui.vertical_centered(|ui| {
+            ui.label(t(
+                "Nu ai început încă nicio carte. Cărțile deschise apar aici.",
+            ))
+        });
+        return;
+    }
+    grid(app, ui, "reading-grid", &books);
+}
+
+/// Book cards in rows as wide as the panel; only the visible rows are drawn.
+fn grid(app: &mut RaftUi, ui: &mut egui::Ui, id: &str, books: &[Book]) {
     let cols = (((ui.available_width() + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
-    let rows = results.len().div_ceil(cols);
+    let rows = books.len().div_ceil(cols);
     egui::ScrollArea::vertical()
-        .id_salt("grid")
+        .id_salt(id)
         .auto_shrink([false, false])
         .show_rows(ui, CARD_H + GAP, rows, |ui, range| {
             for row in range {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = GAP;
-                    for book in results.iter().skip(row * cols).take(cols) {
+                    for book in books.iter().skip(row * cols).take(cols) {
                         card(app, ui, book);
                     }
                 });
@@ -398,12 +420,34 @@ fn selection_bar(app: &mut RaftUi, ui: &mut egui::Ui, results: usize) {
 }
 
 fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
+    // Right to left: the sort list takes the width its label needs, the field the rest.
+    let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+    let layout = egui::Layout::right_to_left(egui::Align::Center);
+    ui.allocate_ui_with_layout(row, layout, |ui| {
+        let current = app.session.query().sort;
+        egui::ComboBox::from_id_salt("sort")
+            .selected_text(sort_label(current))
+            .show_ui(ui, |ui| {
+                for s in Sort::ALL {
+                    if ui.selectable_label(s == current, sort_label(s)).clicked() {
+                        app.act("sort.set", json!({ "sort": sort_slug(s) }));
+                    }
+                }
+            })
+            .response
+            .on_hover_text(t("Sortare"));
         let edit = egui::TextEdit::singleline(&mut app.search)
             .hint_text(t(
                 "Caută după titlu, autor, etichetă sau conținut…  (Ctrl+F)",
             ))
-            .desired_width((ui.available_width() - 260.0).max(120.0));
+            // Room on the right for the clear button.
+            .margin(egui::Margin {
+                left: 4,
+                right: CLEAR_D as i8 + 8,
+                top: 2,
+                bottom: 2,
+            })
+            .desired_width(ui.available_width().max(120.0));
         let resp = ui.add(edit);
         if app.focus_search {
             resp.request_focus();
@@ -415,17 +459,53 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
         } else if !resp.has_focus() {
             app.search.clone_from(&app.session.query().text);
         }
-        let current = app.session.query().sort;
-        egui::ComboBox::new("sort", t("Sortare"))
-            .selected_text(sort_label(current))
-            .show_ui(ui, |ui| {
-                for s in Sort::ALL {
-                    if ui.selectable_label(s == current, sort_label(s)).clicked() {
-                        app.act("sort.set", json!({ "sort": sort_slug(s) }));
-                    }
-                }
-            });
+        if !app.search.is_empty() && clear_button(ui, resp.rect).clicked() {
+            app.search.clear();
+            app.act("search.set", json!({ "text": "" }));
+        }
     });
+}
+
+/// Diameter of the clear-search button.
+const CLEAR_D: f32 = 18.0;
+
+/// A round "×" button drawn inside the right end of the search field `field`.
+fn clear_button(ui: &mut egui::Ui, field: egui::Rect) -> egui::Response {
+    let center = egui::pos2(field.right() - 6.0 - CLEAR_D / 2.0, field.center().y);
+    let rect = egui::Rect::from_center_size(center, egui::vec2(CLEAR_D, CLEAR_D));
+    let label = t("Șterge căutarea");
+    let resp = ui
+        .interact(
+            rect,
+            ui.scope_id().with("clear_search"),
+            egui::Sense::click(),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+    let resp = resp.on_hover_text(label);
+    let visuals = ui.visuals();
+    let color = if resp.hovered() {
+        visuals.strong_text_color()
+    } else {
+        visuals.weak_text_color()
+    };
+    let painter = ui.painter();
+    let r = CLEAR_D / 2.0 - 1.0;
+    if resp.hovered() {
+        painter.circle_filled(center, r, visuals.widgets.hovered.weak_bg_fill);
+    }
+    painter.circle_stroke(center, r, egui::Stroke::new(1.2, color));
+    let a = r * 0.42;
+    let stroke = egui::Stroke::new(1.5, color);
+    painter.line_segment(
+        [center + egui::vec2(-a, -a), center + egui::vec2(a, a)],
+        stroke,
+    );
+    painter.line_segment(
+        [center + egui::vec2(-a, a), center + egui::vec2(a, -a)],
+        stroke,
+    );
+    resp
 }
 
 /// One book card; click opens the book page.

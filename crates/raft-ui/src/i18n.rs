@@ -362,6 +362,17 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Lipsește câmpul…", "Missing field…", "Пустое поле…"),
     ("Continuă lectura", "Continue reading", "Продолжить чтение"),
     (
+        "Continuă lectura ({0})",
+        "Continue reading ({0})",
+        "Продолжить чтение ({0})",
+    ),
+    ("Bibliotecă", "Library", "Библиотека"),
+    (
+        "Nu ai început încă nicio carte. Cărțile deschise apar aici.",
+        "You have not started any book yet. Books you open show up here.",
+        "Вы ещё не начали ни одной книги. Открытые книги появятся здесь.",
+    ),
+    (
         "Nicio carte nu se potrivește căutării.",
         "No book matches the search.",
         "Ни одна книга не подходит под поиск.",
@@ -371,6 +382,7 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Search by title, author, tag or content…  (Ctrl+F)",
         "Поиск по названию, автору, тегу или тексту…  (Ctrl+F)",
     ),
+    ("Șterge căutarea", "Clear search", "Очистить поиск"),
     ("Relevanță", "Relevance", "Релевантность"),
     ("Titlu", "Title", "Название"),
     (

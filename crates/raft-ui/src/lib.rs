@@ -136,10 +136,15 @@ impl RaftUi {
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         match self.session.route().clone() {
             Route::Library => {
-                egui::Panel::left("filters")
-                    .default_size(250.0)
-                    .show(ui, |ui| library::filters(self, ui));
-                egui::CentralPanel::default().show(ui, |ui| library::library(self, ui));
+                egui::Panel::top("library-tabs").show(ui, |ui| library::tabs(self, ui));
+                if self.session.library_tab() == "reading" {
+                    egui::CentralPanel::default().show(ui, |ui| library::reading(self, ui));
+                } else {
+                    egui::Panel::left("filters")
+                        .default_size(250.0)
+                        .show(ui, |ui| library::filters(self, ui));
+                    egui::CentralPanel::default().show(ui, |ui| library::library(self, ui));
+                }
             }
             Route::Book { id } | Route::Edit { id } => {
                 egui::CentralPanel::default().show(ui, |ui| book::book_page(self, ui, &id));

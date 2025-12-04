@@ -877,3 +877,23 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn library_tabs_switch_without_undo_and_search_shows_the_library() {
+    let (mut s, _) = session();
+    assert_eq!(s.library_tab(), "library");
+    s.run("view.book", &json!({"id": "a"})).unwrap();
+    s.run("view.tab.reading", &Value::Null).unwrap();
+    assert_eq!(s.route(), &Route::Library);
+    assert_eq!(s.library_tab(), "reading");
+    assert_eq!(s.snapshot()["library_tab"], "reading");
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert_eq!(s.library_tab(), "reading");
+    s.run("search.set", &json!({"text": ""})).unwrap();
+    assert_eq!(s.library_tab(), "reading");
+    s.run("search.set", &json!({"text": "rust"})).unwrap();
+    assert_eq!(s.library_tab(), "library");
+    s.run("view.tab.reading", &Value::Null).unwrap();
+    s.run("view.tab.library", &Value::Null).unwrap();
+    assert_eq!(s.library_tab(), "library");
+}

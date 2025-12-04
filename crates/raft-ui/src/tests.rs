@@ -794,3 +794,70 @@ fn text_reader_shows_the_book_and_jumps_by_chapter() {
     assert_eq!(p.block(), Some(2));
     assert_eq!(h.state().session.route(), &Route::Reader { id: "b".into() });
 }
+
+#[test]
+fn round_x_clears_the_search() {
+    let mut h = harness();
+    h.run();
+    assert!(h.query_by_label("Șterge căutarea").is_none());
+    h.state_mut()
+        .run("search.set", serde_json::json!({"text": "Rust"}))
+        .unwrap();
+    h.run();
+    h.run();
+    h.get_by_label("1 din 2 cărți");
+    h.get_by_label("Șterge căutarea").click();
+    h.run();
+    h.run();
+    assert_eq!(h.state().session.query().text, "");
+    assert_eq!(h.state().search, "");
+    h.get_by_label("2 din 2 cărți");
+    assert!(h.query_by_label("Șterge căutarea").is_none());
+}
+
+#[test]
+fn continue_reading_has_its_own_tab() {
+    let mut h = harness();
+    h.run();
+    // Nothing started: the library tab shows the grid and the filters, no reading strip.
+    h.get_by_label("Continuă lectura (0)");
+    h.get_by_label("Filtre");
+    h.get_by_label("Selectează: Rust in Action");
+    h.get_by_label("Continuă lectura (0)").click();
+    h.run();
+    assert_eq!(h.state().session.library_tab(), "reading");
+    h.get_by_label("Nu ai început încă nicio carte. Cărțile deschise apar aici.");
+    assert!(h.query_by_label("Filtre").is_none());
+
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.state_mut()
+        .run("book.read", serde_json::json!({}))
+        .unwrap();
+    h.state_mut()
+        .run("reader.next", serde_json::json!({}))
+        .unwrap();
+    h.state_mut()
+        .run("view.library", serde_json::json!({}))
+        .unwrap();
+    h.state_mut()
+        .run("view.library", serde_json::json!({}))
+        .unwrap();
+    h.run();
+    h.run();
+    // Back from the book returns to the reading tab, which now lists it alone.
+    h.get_by_label("Continuă lectura (1)");
+    h.get_by_label("Selectează: Rust in Action");
+    assert!(h.query_by_label("Selectează: Война и мир").is_none());
+
+    // Searching switches back to the library tab.
+    h.state_mut()
+        .run("search.set", serde_json::json!({"text": "Rust"}))
+        .unwrap();
+    h.run();
+    assert_eq!(h.state().session.library_tab(), "library");
+    h.get_by_label("Bibliotecă").click();
+    h.run();
+    h.get_by_label("Filtre");
+}

@@ -327,6 +327,18 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("view.settings", "Setări", view_settings)
     },
     CommandSpec {
+        menu: Some("View/Library"),
+        shortcut: ctrl("1"),
+        record: false,
+        ..spec("view.tab.library", "Bibliotecă", view_tab_library)
+    },
+    CommandSpec {
+        menu: Some("View/Continue reading"),
+        shortcut: ctrl("2"),
+        record: false,
+        ..spec("view.tab.reading", "Continuă lectura", view_tab_reading)
+    },
+    CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
         record: false,
         ..spec("book.show_in_folder", "Arată în dosar", show_in_folder)
@@ -470,6 +482,10 @@ fn search_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     s.state.query.text = text.chars().take(raft_search::MAX_QUERY_CHARS).collect();
     if s.state.route != Route::Library {
         s.state.route = Route::Library;
+    }
+    if !s.state.query.text.is_empty() {
+        // Results are shown in the library tab.
+        s.library_tab = LIBRARY_TABS[0];
     }
     s.refresh();
     Ok(json!({ "results": s.results.len() }))
@@ -755,6 +771,24 @@ fn source_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     }
     saved.map_err(EngineError::Backend)?;
     Ok(json!({ "source": path }))
+}
+
+/// The library screen's tabs; the first is the default.
+pub const LIBRARY_TABS: [&str; 2] = ["library", "reading"];
+
+/// Shows the library screen on its `tab` (from a book page too).
+fn show_library_tab(s: &mut Session, tab: &'static str) -> Result<Value, EngineError> {
+    s.library_tab = tab;
+    s.state.route = Route::Library;
+    Ok(json!({ "tab": tab }))
+}
+
+fn view_tab_library(s: &mut Session, _: &Value) -> Result<Value, EngineError> {
+    show_library_tab(s, LIBRARY_TABS[0])
+}
+
+fn view_tab_reading(s: &mut Session, _: &Value) -> Result<Value, EngineError> {
+    show_library_tab(s, LIBRARY_TABS[1])
 }
 
 /// The settings window's tabs; the first is the default.

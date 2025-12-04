@@ -202,6 +202,8 @@ pub struct Session {
     settings: bool,
     /// Its tab: one of `commands::SETTINGS_TABS`.
     settings_tab: &'static str,
+    /// The library screen's tab: one of `commands::LIBRARY_TABS` (a view state, not undone).
+    library_tab: &'static str,
     /// Reader zoom: page width (PDF, DjVu) or letter size (EPUB, FB2), 1 = default.
     zoom: f32,
     /// Books ticked in the library, for actions on many at once (a view state,
@@ -227,6 +229,7 @@ impl Session {
             loose: catalog.clone(),
             settings: false,
             settings_tab: commands::SETTINGS_TABS[0],
+            library_tab: commands::LIBRARY_TABS[0],
             zoom: 1.0,
             selected: Default::default(),
             catalog,
@@ -498,6 +501,11 @@ impl Session {
     /// The settings window's tab (`general` or `shortcuts`).
     pub fn settings_tab(&self) -> &'static str {
         self.settings_tab
+    }
+
+    /// The library screen's tab (`library`: search and filters, or `reading`: started books).
+    pub fn library_tab(&self) -> &'static str {
+        self.library_tab
     }
 
     /// Recomputes `base` from the loaded folders, then the corrected catalog,
@@ -812,6 +820,7 @@ impl Session {
             "sources": self.sources,
             "settings": self.settings,
             "settings_tab": self.settings_tab,
+            "library_tab": self.library_tab,
             "zoom": self.zoom,
             "selected": self.selected,
         })
