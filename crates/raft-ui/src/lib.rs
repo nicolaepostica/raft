@@ -131,6 +131,11 @@ impl RaftUi {
             theme::apply(ui.ctx(), dark);
             self.themed = Some(dark);
         }
+        if self.session.poll_indexing() {
+            // A folder's catalog is being built: follow its progress.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(500));
+        }
         self.shortcuts(ui.ctx());
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
@@ -390,11 +395,30 @@ impl RaftUi {
                 "{0} din {1} cărți",
                 &[&self.session.result_count(), &total],
             ));
+            for entry in self.session.sources() {
+                if let Some(p) = entry.indexing {
+                    ui.separator();
+                    ui.spinner();
+                    ui.label(indexing_label(entry.source.display_name(), p));
+                }
+            }
             if let Some(status) = &self.session.status {
                 ui.separator();
                 ui.colored_label(ui.visuals().warn_fg_color, status);
             }
         });
+    }
+}
+
+/// "Catalog of X: 3 of 10 books", while a folder's catalog is being built.
+pub(crate) fn indexing_label(name: &str, p: raft_engine::IndexProgress) -> String {
+    if p.total == 0 {
+        tf("Se face catalogul pentru {0}…", &[&name])
+    } else {
+        tf(
+            "Se face catalogul pentru {0}: {1} din {2} cărți",
+            &[&name, &p.done, &p.total],
+        )
     }
 }
 

@@ -22,6 +22,17 @@ struct Recorder {
     covers: Arc<Mutex<Vec<(String, crate::CoverSource)>>>,
     /// The remembered folders, as `save_source` / `move_source` / `forget_source` left them.
     sources: Arc<Mutex<Vec<raft_doc::Source>>>,
+    /// Folders `start_index` was called for, and the build state it reports.
+    indexed: Arc<Mutex<Vec<String>>>,
+    index: Arc<Mutex<Option<crate::IndexState>>>,
+    /// The catalog of "/fresh" and "/broken" has been built.
+    built: Arc<Mutex<bool>>,
+}
+
+impl Recorder {
+    fn set_index(&self, state: crate::IndexState) {
+        *self.index.lock().unwrap() = Some(state);
+    }
 }
 
 impl Backend for Recorder {
@@ -106,7 +117,34 @@ impl Backend for Recorder {
         }
         Ok(())
     }
+    fn needs_index(&self, root: &str) -> bool {
+        (root == "/fresh" || root == "/broken") && !*self.built.lock().unwrap()
+    }
+    fn start_index(&self, root: &str) -> Result<(), String> {
+        self.indexed.lock().unwrap().push(root.into());
+        self.set_index(crate::IndexState::Running(Default::default()));
+        Ok(())
+    }
+    fn index_state(&self, _: &str) -> Option<crate::IndexState> {
+        let mut state = self.index.lock().unwrap();
+        match state.clone() {
+            Some(crate::IndexState::Running(p)) => Some(crate::IndexState::Running(p)),
+            _ => state.take(),
+        }
+    }
     fn open_source(&self, root: &str) -> Result<Catalog, String> {
+        if root == "/fresh" && *self.built.lock().unwrap() {
+            return Ok(Catalog {
+                books: vec![Book {
+                    id: "f".into(),
+                    title: "Fresh Book".into(),
+                    source: root.into(),
+                    format: Format::Epub,
+                    ..Book::default()
+                }],
+                categories: vec![],
+            });
+        }
         if root != "/disk2" && root != "/disk3" {
             return Err(format!("no catalog.db in {root}"));
         }
@@ -514,6 +552,69 @@ fn library_folders_are_added_filtered_and_removed() {
     assert_eq!(s.result_count(), 2);
     assert!(s.run("source.remove", &json!({"path": "/disk2"})).is_err());
     assert!(s.run("source.add", &json!({"path": "  "})).is_err());
+}
+
+#[test]
+fn a_folder_without_a_catalog_gets_one_built() {
+    let r = Recorder::default();
+    let mut s = Session::new(catalog(), vec![], Box::new(r.clone()));
+    let out = s.run("source.add", &json!({"path": "/fresh"})).unwrap();
+    assert_eq!(out["indexing"], true);
+    assert_eq!(*r.indexed.lock().unwrap(), ["/fresh"]);
+    assert_eq!(r.sources.lock().unwrap().len(), 1);
+    let entry = |s: &Session| s.source("/fresh").cloned().unwrap();
+    assert!(entry(&s).loaded() && entry(&s).indexing.is_some());
+
+    let p = crate::IndexProgress { done: 3, total: 10 };
+    r.set_index(crate::IndexState::Running(p));
+    assert!(s.poll_indexing());
+    assert_eq!(entry(&s).indexing, Some(p));
+    assert!(s.book("f").is_none());
+
+    *r.built.lock().unwrap() = true;
+    r.set_index(crate::IndexState::Done);
+    assert!(!s.poll_indexing());
+    assert_eq!(entry(&s).indexing, None);
+    assert_eq!(s.book("f").map(|b| b.title.as_str()), Some("Fresh Book"));
+    assert_eq!(s.source_books("/fresh"), 1);
+
+    // Updating it again: a failed build keeps the books it had.
+    s.run("source.reindex", &json!({"path": "/fresh"})).unwrap();
+    assert_eq!(r.indexed.lock().unwrap().len(), 2);
+    r.set_index(crate::IndexState::Failed("no python3".into()));
+    assert!(!s.poll_indexing());
+    assert!(s.book("f").is_some());
+    assert!(
+        s.status
+            .as_deref()
+            .is_some_and(|m| m.contains("no python3"))
+    );
+    assert!(
+        s.run("source.reindex", &json!({"path": "/elsewhere"}))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_failed_first_build_leaves_the_folder_unavailable() {
+    let r = Recorder::default();
+    let mut s = Session::new(catalog(), vec![], Box::new(r.clone()));
+    s.run("source.add", &json!({"path": "/broken"})).unwrap();
+    r.set_index(crate::IndexState::Failed("build-catalog not found".into()));
+    s.poll_indexing();
+    let entry = s.source("/broken").cloned().unwrap();
+    assert!(
+        matches!(entry.status, crate::SourceStatus::Unavailable(ref m) if m.contains("not found"))
+    );
+    assert_eq!(entry.indexing, None);
+    // Trying it again starts another build.
+    s.run(
+        "source.enable",
+        &json!({"path": "/broken", "enabled": true}),
+    )
+    .unwrap();
+    assert_eq!(r.indexed.lock().unwrap().len(), 2);
+    assert!(s.source("/broken").is_some_and(|e| e.indexing.is_some()));
 }
 
 #[test]

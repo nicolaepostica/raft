@@ -210,7 +210,7 @@ fn sources(app: &mut RaftUi, ui: &mut egui::Ui) {
     ui.heading(t("Surse de cărți"));
     ui.label(
         egui::RichText::new(t(
-            "Folderele cu cărți (fiecare cu catalog.db făcut de build-catalog). Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
+            "Folderele cu cărți. Pentru un folder fără catalog.db se face unul, fără AI: titlul și autorul din metadate sau din numele fișierului, coperta din prima pagină. Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
         ))
         .weak(),
     );
@@ -284,6 +284,17 @@ fn source_row(app: &mut RaftUi, ui: &mut egui::Ui, entry: &SourceEntry) {
     });
 
     match &entry.status {
+        _ if entry.indexing.is_some() => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                let p = entry.indexing.unwrap_or_default();
+                ui.label(if p.total == 0 {
+                    t("se face catalogul…").to_owned()
+                } else {
+                    tf("catalog: {0} din {1}", &[&p.done, &p.total])
+                });
+            });
+        }
         SourceStatus::Loaded => {
             ui.label(tf("{0} cărți", &[&app.session.source_books(&path)]));
         }
@@ -311,6 +322,18 @@ fn source_row(app: &mut RaftUi, ui: &mut egui::Ui, entry: &SourceEntry) {
             .clicked()
         {
             crate::pick_folder(app, Pick::Move(path.clone()));
+        }
+        if ui
+            .add_enabled(
+                entry.indexing.is_none(),
+                egui::Button::new(t("Actualizează")),
+            )
+            .on_hover_text(t(
+                "Adaugă în catalog cărțile noi din folder și le scoate pe cele șterse (fără AI)",
+            ))
+            .clicked()
+        {
+            app.act("source.reindex", json!({ "path": path }));
         }
         if ui
             .button(t("Scoate"))

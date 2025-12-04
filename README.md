@@ -35,7 +35,13 @@ and Russian, in one folder with a SQLite catalog next to them.
   to the trash, after a confirmation listing them.
 - **Several library folders:** add more folders (another disk, an external drive) with
   File → Settings (Ctrl+,) → Add a folder; each has its own `catalog.db` made by
-  `build-catalog DIR` (books in subfolders too, e.g. one folder per author; the files are not
+  `build-catalog DIR`. A folder without one gets it from the app: `build-catalog DIR --no-ai`
+  runs in the background (progress in the settings and the status bar) and takes the title,
+  authors, year, language and ISBN from the files' metadata, the text of the first pages
+  (the largest font of a PDF's first pages when neither the metadata nor the file name says
+  anything) and the file names; the cover is the first page (PDF, DjVu) or the book's own
+  picture (EPUB, FB2). "Update" in the settings runs it again for new or deleted books
+  (books in subfolders too, e.g. one folder per author; the files are not
   renamed or moved; the subfolders are a "Folders" filter and a link on the book page). Their
   books are shown together. In the settings every folder can be
   renamed, switched off (its books are hidden, it stays
@@ -85,7 +91,10 @@ rename-books --apply          # rename to Title_Year, delete identical duplicate
 build-catalog --json          # add only what is new or moved, drop what was deleted
 ```
 
-`rename-books` and `build-catalog` need `poppler-utils` (pdfinfo, pdftotext, pdftoppm),
+`build-catalog --no-ai` makes the catalog without the `claude` CLI (what the app runs for a
+new folder); `build-catalog --refresh-ai` adds the AI metadata later.
+
+`rename-books` and `build-catalog` need `poppler-utils` (pdfinfo, pdftotext, pdftoppm, pdftohtml),
 `djvulibre`, `tesseract` + `tesseract-langpack-rus` (OCR for scanned books), Python 3 + Pillow,
 and the `claude` CLI (AI metadata, with the haiku model).
 

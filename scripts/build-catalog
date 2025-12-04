@@ -5,7 +5,10 @@ Usage:
     build-catalog                    # /backup/books, only new or moved books
     build-catalog DIR -j 8           # another folder, 8 books in parallel
     build-catalog --refresh-ai       # recompute the AI metadata of every book
-    build-catalog --no-ai            # metadata from the files only, without the `claude` CLI
+    build-catalog --no-ai            # metadata from the files only, without the `claude` CLI:
+                                     # title, authors, year, language, ISBN from the file's
+                                     # metadata, its first pages and its name (Raft runs this
+                                     # for a folder added without a catalog.db)
     build-catalog --json             # also export DIR/catalog.json
     build-catalog --clean-only       # only strip download-site addresses from the indexed text
     build-catalog --fix-categories   # only put the fiction categories right (no AI)
@@ -187,9 +190,9 @@ def cover_epub(path, out):
 def cover_fb2(path, out):
     t = open(path, encoding='utf8', errors='ignore').read()
     m = re.search(r'<coverpage>.*?href="#([^"]+)"', t, re.S)
-    if not m:
-        return False
-    b = re.search(r'<binary[^>]*id="%s"[^>]*>(.*?)</binary>' % re.escape(m.group(1)), t, re.S)
+    b = m and re.search(r'<binary[^>]*id="%s"[^>]*>(.*?)</binary>' % re.escape(m.group(1)), t, re.S)
+    # No cover page: the book's first picture.
+    b = b or re.search(r'<binary[^>]*content-type="image/[^"]*"[^>]*>(.*?)</binary>', t, re.S)
     return bool(b) and save_cover(base64.b64decode(b.group(1)), out)
 
 
@@ -292,6 +295,201 @@ def title_from_filename(f):
     return t.replace('_', ' ').strip()
 
 
+# ---------- metadata without AI ----------
+
+# FB2 genre codes (http://www.fictionbook.org/index.php/Жанры_FictionBook) as tags fiction_categories knows.
+FB2_GENRES = {'sf_fantasy': 'fantasy', 'fantasy': 'fantasy', 'sf_fantasy_city': 'urban-fantasy',
+              'dark_fantasy': 'dark-fantasy', 'sf_litrpg': 'litrpg', 'litrpg': 'litrpg',
+              'sf': 'science-fiction', 'sf_space': 'space-opera', 'sf_social': 'science-fiction',
+              'sf_cyberpunk': 'science-fiction', 'sf_postapocalyptic': 'post-apocalyptic',
+              'sf_history': 'alternate-history', 'popadanec': 'попаданцы', 'popadanets': 'попаданцы',
+              'prose_contemporary': 'fiction', 'prose_classic': 'fiction', 'det_classic': 'fiction',
+              'adventure': 'fiction', 'sf_action': 'fiction', 'sf_epic': 'fantasy',
+              'sf_heroic': 'fantasy', 'sf_mystic': 'fantasy', 'sf_horror': 'fiction'}
+LANG3 = {'rus': 'ru', 'eng': 'en', 'ron': 'ro', 'rum': 'ro', 'ukr': 'uk', 'fra': 'fr', 'fre': 'fr',
+         'deu': 'de', 'ger': 'de'}
+JUNK_TITLE = re.compile(r'(\.(pdf|docx?|rtf|indd|qxd|tex|dvi|ps)$|^(title|document\d*|book|cover|'
+                        r'unknown|none|null|untitled.*|slide \d+)$|^[\W\d_]+$)', re.I)
+
+
+# Words of a file name that say nothing about the book ('download_3.pdf', 'scan0001.pdf').
+NAME_NOISE = {'download', 'downloads', 'book', 'books', 'ebook', 'file', 'document', 'scan', 'copy',
+              'untitled', 'new', 'final', 'print', 'pdf', 'epub', 'djvu', 'fb2', 'img', 'doc', 'www',
+              'com', 'org', 'net', 'книга', 'файл', 'документ', 'скан'}
+
+
+# Lines of the first pages that are not a title even in a large font.
+PAGE_NOISE = re.compile(r'(?i)^\W*(annotation|аннотация|contents|table of contents|содержание|оглавление|'
+                        r'copyright|preface|foreword|предисловие|введение|introduction|cover|обложка)\W*$')
+
+
+def weak_name(title):
+    """Whether a title made from a file name says nothing (fewer than two real words)."""
+    words = [w for w in re.findall(r'[^\W\d_]{3,}', title) if w.lower() not in NAME_NOISE]
+    return len(words) < 2
+
+
+def words(text):
+    return set(re.findall(r'[^\W_]+', text.lower().replace('ё', 'е')))
+
+
+def mojibake(text):
+    """Cyrillic decoded as Latin-1 ('Áèëë Áåäæåê'): most letters in À..ÿ."""
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum('\u00c0' <= c <= '\u00ff' for c in letters) > len(letters) * 0.3
+
+
+def title_from_pages(path, pages=3):
+    """A PDF's title as printed: the text in the largest font of its first pages, on the page
+    where that size first appears (pdftohtml -xml gives every line with its font size)."""
+    r = run(['pdftohtml', '-xml', '-i', '-q', '-f', '1', '-l', str(pages), '-stdout', path], 60)
+    if not r or not r.stdout:
+        return None
+    import html
+    xml = r.stdout[:2_000_000].decode('utf8', 'ignore')
+    sizes = {m.group(1): int(m.group(2)) for m in re.finditer(r'<fontspec id="(\d+)" size="(-?\d+)"', xml)}
+    lines = []
+    for n, page in enumerate(re.split(r'<page\b', xml)[1:]):
+        for m in re.finditer(r'<text\b[^>]*\bfont="(\d+)"[^>]*>(.*?)</text>', page, re.S):
+            t = re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', '', m.group(2)))).strip()
+            if re.search(r'[^\W\d_]{2}', t) and not rb.DOWNLOAD_SITES.search(t) and not mojibake(t) \
+                    and not re.search(r'https?://|www\.', t) and not PAGE_NOISE.match(t):
+                lines.append((sizes.get(m.group(1), 0), n, t))
+    if not lines:
+        return None
+    top = max(size for size, _, _ in lines)
+    page = min(n for size, n, _ in lines if size == top)
+    title = [t for size, n, t in lines if size == top and n == page]
+    title = re.sub(r'\s+', ' ', ' '.join(title)).strip(' .,:;-')
+    # More than a few lines in that size is body text, not a title page.
+    return title if 3 <= len(title) <= 200 and len(title.split()) <= 25 else None
+
+
+def person(name):
+    """'Smyth, Neil;' -> 'Neil Smyth' (the 'Last, First' form of EPUB and PDF metadata)."""
+    n = html_text(name).strip(' ;,.')
+    parts = [x.strip() for x in n.split(',')]
+    if len(parts) == 2 and all(parts) and len(parts[0].split()) <= 2 and len(parts[1].split()) <= 3:
+        n = f'{parts[1]} {parts[0]}'
+    return n
+
+
+def file_info(path):
+    """Authors, language and FB2 genres written in an EPUB or FB2 file (PDF authors come from
+    rename-books' extract())."""
+    ext = os.path.splitext(path)[1].lower()
+    info = {'authors': [], 'language': None, 'genres': []}
+    try:
+        if ext == '.fb2':
+            t = open(path, encoding='utf8', errors='ignore').read(200000)
+            ti = re.search(r'<title-info>(.*?)</title-info>', t, re.S)
+            t = ti.group(1) if ti else t
+            for a in re.findall(r'<author>(.*?)</author>', t, re.S)[:10]:
+                parts = [re.search(rf'<{k}>([^<]*)</{k}>', a) for k in ('first-name', 'middle-name', 'last-name')]
+                name = ' '.join(p.group(1).strip() for p in parts if p and p.group(1).strip())
+                if not name:
+                    m = re.search(r'<nickname>([^<]*)</nickname>', a)
+                    name = m.group(1).strip() if m else ''
+                if name:
+                    info['authors'].append(name)
+            m = re.search(r'<lang>([^<]*)</lang>', t)
+            info['language'] = m and m.group(1)
+            info['genres'] = [g.strip() for g in re.findall(r'<genre[^>]*>([^<]*)</genre>', t)][:10]
+        elif ext == '.epub':
+            z = zipfile.ZipFile(path)
+            opf = next(n for n in z.namelist() if n.endswith('.opf'))
+            t = z.read(opf).decode('utf8', 'ignore')
+            info['authors'] = [a for c in re.findall(r'<dc:creator[^>]*>([^<]*)', t)[:10]
+                               for a in split_authors(c)]
+            m = re.search(r'<dc:language[^>]*>([^<]*)', t)
+            info['language'] = m and m.group(1)
+    except Exception:
+        pass
+    info['authors'] = [a for a in info['authors'] if a]
+    return info
+
+
+def html_text(s):
+    import html
+    return re.sub(r'\s+', ' ', html.unescape(s or '')).strip()
+
+
+def language_code(value):
+    """'en-US' -> 'en', 'rus' -> 'ru'; None for anything that is not a language code."""
+    v = (value or '').strip().lower().replace('_', '-').split('-')[0]
+    v = LANG3.get(v, v)
+    return v if re.fullmatch(r'[a-z]{2}', v) else None
+
+
+def guess_language(text):
+    """The language of a book's first pages: ru (Cyrillic), ro (Romanian letters), en (Latin)."""
+    cyr = len(re.findall(r'[А-Яа-яЁё]', text))
+    lat = len(re.findall(r'[A-Za-z]', text))
+    if cyr + lat < 200:
+        return None
+    if cyr > lat:
+        return 'uk' if len(re.findall(r'[іїєґІЇЄҐ]', text)) > cyr * 0.01 else 'ru'
+    return 'ro' if len(re.findall(r'[ăâîșşțţĂÂÎȘŞȚŢ]', text)) > lat * 0.01 else 'en'
+
+
+def find_isbn(text):
+    """The first valid ISBN-13 or ISBN-10 printed in the text, digits only."""
+    for m in re.finditer(r'ISBN(?:-1[03])?[:\s]*((?:97[89][\s-]?)?(?:\d[\s-]?){9}[\dXx])', text):
+        d = re.sub(r'[\s-]', '', m.group(1)).upper()
+        if len(d) == 13 and d.isdigit() and sum(int(c) * (3 if i % 2 else 1) for i, c in enumerate(d)) % 10 == 0:
+            return d
+        if len(d) == 10 and d[:9].isdigit() and \
+                sum((10 - i) * (10 if c == 'X' else int(c)) for i, c in enumerate(d)) % 11 == 0:
+            return d
+    return None
+
+
+def split_authors(value):
+    """'A. Smith; B. Jones', 'A. Smith & B. Jones', 'A. Smith, B. Jones' -> two names; 'Smith, John'
+    stays one."""
+    v = html_text(value)
+    if not v:
+        return []
+    parts = [p.strip() for p in re.split(r'\s*(?:;|&|\band\b|\bи\b)\s*', v) if p.strip()]
+    out = []
+    for p in parts:
+        commas = [c.strip() for c in p.split(',') if c.strip()]
+        out += commas if len(commas) > 1 and all(' ' in c for c in commas) else [p]
+    return [a for a in map(person, out) if a][:10]
+
+
+def local_metadata(path, rel, meta, text):
+    """Catalog fields of a book without AI: from its own metadata, its first pages and its name."""
+    name = os.path.basename(rel)
+    info = file_info(path)
+    inside = html_text(meta.get('Title'))
+    if len(inside) < 3 or rb.BAD_TITLES.search(inside) or JUNK_TITLE.search(inside) or mojibake(inside):
+        inside = ''
+    if rb.DONE_RE.search(name):
+        # Named Title_Year.ext by rename-books: the title inside the file only when it is the same
+        # one with its punctuation ('Android Studio 4.1' for 'Android_Studio_4_1').
+        title = title_from_filename(name)
+        if inside and words(inside) == words(title):
+            title = inside
+    else:
+        title = inside or rb.guess_title({}, name)
+        if not inside and weak_name(title) and name.lower().endswith('.pdf'):
+            title = title_from_pages(path) or title
+    vol = rb.find_volume(meta, None, name, title)
+    if vol:
+        title = rb.volume_title(title, vol)
+    authors = info['authors'] or split_authors(meta.get('Author'))
+    year = year_from_filename(name) or rb.guess_year(meta, text)
+    tags = []
+    for g in info['genres']:
+        t = FB2_GENRES.get(g)
+        if t and t not in tags:
+            tags.append(t)
+    return {'title': title[:300], 'authors': authors, 'year': year,
+            'language': language_code(info['language']) or guess_language(text),
+            'isbn': find_isbn(text), 'tags': tags}
+
+
 # ---------- main ----------
 
 def fiction_categories(cats, tags, fmt):
@@ -390,11 +588,12 @@ def main():
         has_ai = bid in have_meta and not a.refresh_ai
         meta, text = rb.extract(p)
         res = None if (a.no_ai or has_ai) else ask_ai(meta, text, f, a.model)
+        local = None if (res or has_ai) else local_metadata(p, f, meta, text)
         cover = f'covers/{bid}.webp'
         cpath = os.path.join(root, cover)
         if not os.path.exists(cpath) and not make_cover(p, cpath):
             cover = None
-        return f, st, bid, meta, text, res, has_ai, cover, page_count(p)
+        return f, st, bid, meta, text, res, local, has_ai, cover, page_count(p)
 
     have_meta = {r[0] for r in db.execute('SELECT id FROM books')}
 
@@ -410,7 +609,7 @@ def main():
             done += 1
             if r is None:
                 continue
-            f, st, bid, meta, text, res, has_ai, cover, pages = r
+            f, st, bid, meta, text, res, local, has_ai, cover, pages = r
             seen_ids.add(bid)
             fmt = os.path.splitext(f)[1].lower().lstrip('.')
             if has_ai:   # a known book, only moved or renamed
@@ -419,7 +618,8 @@ def main():
                            (f, os.path.basename(f), st.st_size, st.st_mtime, cover, now(), bid))
                 print(f'[{done}/{len(todo)}] moved: {f}', flush=True)
             else:
-                res = res or {}
+                ai = bool(res)
+                res = res or local or {}
                 title = res.get('title') or title_from_filename(os.path.basename(f))
                 year = res.get('year') or year_from_filename(os.path.basename(f))
                 cats, tags = res.get('categories') or ['other'], res.get('tags') or []
@@ -434,7 +634,7 @@ def main():
                 db.execute('INSERT INTO books_fts VALUES(?,?,?,?,?,?,?)', (
                     bid, title, ' '.join(authors), ' '.join(cats), ' '.join(tags),
                     res.get('description') or '', text))
-                flag = '' if res else '  (no AI)'
+                flag = '' if ai else '  (no AI)'
                 print(f'[{done}/{len(todo)}] {f}  →  {", ".join(cats)}{flag}{"" if cover else "  (no cover)"}',
                       flush=True)
             if done % 20 == 0:

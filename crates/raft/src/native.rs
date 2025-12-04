@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use raft_doc::edits::{Field, Override};
 use raft_doc::{Book, BookId, Catalog, Progress, Source};
-use raft_engine::{Backend, CoverSource};
+use raft_engine::{Backend, CoverSource, IndexState};
 use raft_store::{CatalogDb, UserDb};
 use raft_text::TextBook;
 use raft_ui::Files;
@@ -20,6 +20,8 @@ pub struct NativeBackend {
     user: UserDb,
     /// Custom covers, next to `raft.db`.
     covers: PathBuf,
+    /// Catalog builds of folders that had none (or were asked to update).
+    jobs: crate::index::Jobs,
 }
 
 impl NativeBackend {
@@ -32,6 +34,7 @@ impl NativeBackend {
             catalogs: Mutex::default(),
             user,
             covers: covers_dir(data),
+            jobs: crate::index::Jobs::new(crate::index::find_script()),
         })
     }
 
@@ -124,6 +127,23 @@ impl Backend for NativeBackend {
         catalogs.retain(|(r, _)| r != root);
         catalogs.push((root.to_owned(), db));
         Ok(catalog)
+    }
+
+    fn needs_index(&self, root: &str) -> bool {
+        let dir = Path::new(root);
+        dir.is_absolute() && dir.is_dir() && !dir.join("catalog.db").is_file()
+    }
+
+    fn start_index(&self, root: &str) -> Result<(), String> {
+        let dir = Path::new(root);
+        if !dir.is_absolute() || !dir.is_dir() {
+            return Err(format!("folder not found: {root}"));
+        }
+        self.jobs.start(root)
+    }
+
+    fn index_state(&self, root: &str) -> Option<IndexState> {
+        self.jobs.state(root)
     }
 
     fn close_source(&self, root: &str) -> Result<(), String> {

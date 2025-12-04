@@ -240,9 +240,18 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("view.language", "Schimbă limba interfeței", view_language)
     },
     CommandSpec {
-        params: r#"{"path": string} (a folder with catalog.db, made by build-catalog DIR)"#,
+        params: r#"{"path": string} (a folder without catalog.db gets one: build-catalog DIR --no-ai runs in the background)"#,
         record: false,
         ..spec("source.add", "Adaugă un folder cu cărți", source_add)
+    },
+    CommandSpec {
+        params: r#"{"path": string} (build-catalog DIR --no-ai in the background: new books added, deleted ones dropped)"#,
+        record: false,
+        ..spec(
+            "source.reindex",
+            "Actualizează catalogul unui folder",
+            source_reindex,
+        )
     },
     CommandSpec {
         params: r#"{"path": string} (the folder's files are not touched)"#,
@@ -320,13 +329,6 @@ static REGISTRY: &[CommandSpec] = &[
         )
     },
     CommandSpec {
-        menu: Some("File/Settings"),
-        shortcut: ctrl(","),
-        params: r#"{"open": bool, "tab": "general"|"shortcuts"} (default: switch; a tab opens it)"#,
-        record: false,
-        ..spec("view.settings", "Setări", view_settings)
-    },
-    CommandSpec {
         menu: Some("View/Library"),
         shortcut: ctrl("1"),
         record: false,
@@ -337,6 +339,13 @@ static REGISTRY: &[CommandSpec] = &[
         shortcut: ctrl("2"),
         record: false,
         ..spec("view.tab.reading", "Continuă lectura", view_tab_reading)
+    },
+    CommandSpec {
+        menu: Some("File/Settings"),
+        shortcut: ctrl(","),
+        params: r#"{"open": bool, "tab": "general"|"shortcuts"} (default: switch; a tab opens it)"#,
+        record: false,
+        ..spec("view.settings", "Setări", view_settings)
     },
     CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
@@ -625,16 +634,26 @@ fn source_add(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     if s.source(&root).is_some() {
         return Err(bad(format!("`{root}` is already in the library")));
     }
-    let catalog = s.backend.open_source(&root).map_err(EngineError::Backend)?;
+    let catalog = s.open_or_index(&root).map_err(EngineError::Backend)?;
     let source = Source::new(root.clone());
     if let Err(e) = s.backend.save_source(&source) {
         let _ = s.backend.close_source(&root);
         return Err(EngineError::Backend(e));
     }
+    let indexing = catalog.is_none();
     let before = s.catalog.books.len();
     s.add_source(source, catalog);
     let added = s.catalog.books.len() - before;
-    Ok(json!({ "source": root, "books": added }))
+    Ok(json!({ "source": root, "books": added, "indexing": indexing }))
+}
+
+fn source_reindex(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let root = known_source(s, p)?;
+    if s.source(&root).is_some_and(|e| e.indexing.is_none()) {
+        s.backend.start_index(&root).map_err(EngineError::Backend)?;
+        s.set_indexing(&root);
+    }
+    Ok(json!({ "source": root, "indexing": true }))
 }
 
 fn source_remove(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
@@ -676,10 +695,15 @@ fn source_enable(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     if was_loaded {
         return Ok(json!({ "source": root, "status": "loaded" }));
     }
-    match s.backend.open_source(&root) {
-        Ok(books) => {
+    match s.open_or_index(&root) {
+        Ok(Some(books)) => {
             s.set_source_books(&root, SourceStatus::Loaded, books);
             Ok(json!({ "source": root, "status": "loaded", "books": s.source_books(&root) }))
+        }
+        Ok(None) => {
+            s.set_source_books(&root, SourceStatus::Loaded, Default::default());
+            s.set_indexing(&root);
+            Ok(json!({ "source": root, "status": "indexing" }))
         }
         Err(e) => {
             // Stays switched on: it loads by itself when the disk is back.
@@ -716,13 +740,16 @@ fn source_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     }
     let mut status = entry.status.clone();
     let mut books = entry.books.clone();
+    let mut indexing = entry.indexing;
     if let Some(to) = &new_path {
         if s.source(to).is_some() {
             return Err(bad(format!("`{to}` is already in the library")));
         }
         if source.enabled {
             // The new folder must open before the old one is let go.
-            books = s.backend.open_source(to).map_err(EngineError::Backend)?;
+            let opened = s.open_or_index(to).map_err(EngineError::Backend)?;
+            indexing = opened.is_none().then(Default::default);
+            books = opened.unwrap_or_default();
             status = SourceStatus::Loaded;
         }
         if let Err(e) = s.backend.move_source(&root, to) {
@@ -764,6 +791,7 @@ fn source_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         if moved {
             e.status = status;
             e.books = books;
+            e.indexing = indexing;
         }
     }
     if moved {

@@ -179,9 +179,9 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ),
     ("Filtru: folder", "Filter: folder", "Фильтр: папка"),
     (
-        "Adaugă un folder cu cărți (cu catalog.db făcut de build-catalog)",
-        "Add a book folder (with a catalog.db made by build-catalog)",
-        "Добавить папку с книгами (с catalog.db от build-catalog)",
+        "Adaugă un folder cu cărți (fără catalog.db se face unul, fără AI)",
+        "Add a book folder (one without a catalog.db gets one, without AI)",
+        "Добавить папку с книгами (без catalog.db он создаётся, без ИИ)",
     ),
     (
         "Scoate folderul din bibliotecă (fișierele rămân pe disc)",
@@ -205,9 +205,40 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Întunecată", "Dark", "Тёмная"),
     ("Surse de cărți", "Book sources", "Источники книг"),
     (
-        "Folderele cu cărți (fiecare cu catalog.db făcut de build-catalog). Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
-        "The book folders (each with a catalog.db made by build-catalog). A disabled folder stays in the list, but its books are not shown.",
-        "Папки с книгами (в каждой catalog.db от build-catalog). Выключенная папка остаётся в списке, но её книги не показываются.",
+        "Folderele cu cărți. Pentru un folder fără catalog.db se face unul, fără AI: titlul și autorul din metadate sau din numele fișierului, coperta din prima pagină. Un folder dezactivat rămâne în listă, dar cărțile lui nu se arată.",
+        "The book folders. A folder without a catalog.db gets one, made without AI: title and author from the metadata or the file name, the cover from the first page. A disabled folder stays in the list, but its books are not shown.",
+        "Папки с книгами. Для папки без catalog.db он создаётся без ИИ: название и автор из метаданных или имени файла, обложка — первая страница. Выключенная папка остаётся в списке, но её книги не показываются.",
+    ),
+    (
+        "se face catalogul…",
+        "building the catalog…",
+        "создаётся каталог…",
+    ),
+    (
+        "catalog: {0} din {1}",
+        "catalog: {0} of {1}",
+        "каталог: {0} из {1}",
+    ),
+    ("Actualizează", "Update", "Обновить"),
+    (
+        "Adaugă în catalog cărțile noi din folder și le scoate pe cele șterse (fără AI)",
+        "Adds the folder's new books to the catalog and drops the deleted ones (without AI)",
+        "Добавляет в каталог новые книги из папки и убирает удалённые (без ИИ)",
+    ),
+    (
+        "Actualizează catalogul unui folder",
+        "Update a folder's catalog",
+        "Обновить каталог папки",
+    ),
+    (
+        "Se face catalogul pentru {0}…",
+        "Building the catalog of {0}…",
+        "Создаётся каталог для {0}…",
+    ),
+    (
+        "Se face catalogul pentru {0}: {1} din {2} cărți",
+        "Building the catalog of {0}: {1} of {2} books",
+        "Каталог для {0}: {1} из {2} книг",
     ),
     ("Niciun folder încă.", "No folders yet.", "Папок пока нет."),
     ("Adaugă un folder…", "Add a folder…", "Добавить папку…"),

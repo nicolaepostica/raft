@@ -1,6 +1,7 @@
 //! Raft desktop app: wires the SQLite backend and file access into the egui UI.
 
 mod control;
+mod index;
 mod native;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};

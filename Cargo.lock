@@ -2856,6 +2856,7 @@ dependencies = [
  "eframe",
  "egui",
  "image",
+ "proptest",
  "raft-doc",
  "raft-engine",
  "raft-render",

@@ -81,6 +81,21 @@ pub trait Backend: Send {
     fn open_source(&self, _root: &str) -> Result<Catalog, String> {
         Err("adding library folders is not available here".into())
     }
+    /// Whether the folder is there but has no catalog yet, so it must be built
+    /// first (`start_index`).
+    fn needs_index(&self, _root: &str) -> bool {
+        false
+    }
+    /// Starts building (or bringing up to date) the folder's catalog in the
+    /// background, without AI; does nothing when a build of it already runs.
+    fn start_index(&self, _root: &str) -> Result<(), String> {
+        Err("building catalogs is not available here".into())
+    }
+    /// How the folder's build goes; `Done` / `Failed` are reported once, then
+    /// `None` (also when no build was started).
+    fn index_state(&self, _root: &str) -> Option<IndexState> {
+        None
+    }
     /// Closes an open library folder (its files are not touched).
     fn close_source(&self, _root: &str) -> Result<(), String> {
         Ok(())
@@ -151,8 +166,23 @@ pub enum SourceStatus {
     Loaded,
     /// Switched off by the user.
     Disabled,
-    /// Switched on but could not be opened (unplugged disk, no catalog.db).
+    /// Switched on but could not be opened (unplugged disk, a failed catalog build).
     Unavailable(String),
+}
+
+/// How far a folder's catalog build has got (books processed of those to do).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct IndexProgress {
+    pub done: usize,
+    pub total: usize,
+}
+
+/// A catalog build started by [`Backend::start_index`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexState {
+    Running(IndexProgress),
+    Done,
+    Failed(String),
 }
 
 /// A library folder and its state in this session.
@@ -161,6 +191,8 @@ pub struct SourceEntry {
     #[serde(flatten)]
     pub source: Source,
     pub status: SourceStatus,
+    /// Its catalog is being built (its books arrive when the build ends).
+    pub indexing: Option<IndexProgress>,
     /// Its books, as loaded (before merging and corrections).
     #[serde(skip)]
     books: Catalog,
@@ -401,6 +433,7 @@ impl Session {
             self.sources.push(SourceEntry {
                 source,
                 status,
+                indexing: None,
                 books: Catalog {
                     books: mine,
                     categories: Vec::new(),
@@ -412,35 +445,122 @@ impl Session {
     }
 
     /// Starts with the saved folders, opening the enabled ones through the
-    /// backend; one that cannot be opened stays in the list as unavailable.
+    /// backend (or building the catalog of one that has none yet); one that
+    /// cannot be opened stays in the list as unavailable.
     pub fn load_sources(mut self, sources: Vec<Source>) -> Self {
         for source in sources {
-            let (status, books) = if source.enabled {
-                match self.backend.open_source(&source.path) {
+            let (status, opened) = if source.enabled {
+                match self.open_or_index(&source.path) {
                     Ok(c) => (SourceStatus::Loaded, c),
-                    Err(e) => (SourceStatus::Unavailable(e), Catalog::default()),
+                    Err(e) => (SourceStatus::Unavailable(e), Some(Catalog::default())),
                 }
             } else {
-                (SourceStatus::Disabled, Catalog::default())
+                (SourceStatus::Disabled, Some(Catalog::default()))
             };
             self.sources.push(SourceEntry {
                 source,
                 status,
-                books,
+                indexing: opened.is_none().then(IndexProgress::default),
+                books: opened.unwrap_or_default(),
             });
         }
         self.rebuild();
         self
     }
 
-    /// Adds a folder with its books (already tagged with its path).
-    pub(crate) fn add_source(&mut self, source: Source, catalog: Catalog) {
+    /// Opens a folder's catalog, or starts building it when the folder has
+    /// none yet (`Ok(None)`: its books arrive through `poll_indexing`).
+    pub(crate) fn open_or_index(&self, root: &str) -> Result<Option<Catalog>, String> {
+        if self.backend.needs_index(root) {
+            self.backend.start_index(root)?;
+            return Ok(None);
+        }
+        self.backend.open_source(root).map(Some)
+    }
+
+    /// Adds a folder with its books (already tagged with its path), or with
+    /// none while its catalog is being built (`None`).
+    pub(crate) fn add_source(&mut self, source: Source, catalog: Option<Catalog>) {
         self.sources.push(SourceEntry {
             source,
             status: SourceStatus::Loaded,
-            books: catalog,
+            indexing: catalog.is_none().then(IndexProgress::default),
+            books: catalog.unwrap_or_default(),
         });
         self.rebuild();
+    }
+
+    /// Whether some folder's catalog is being built.
+    pub fn indexing(&self) -> bool {
+        self.sources.iter().any(|e| e.indexing.is_some())
+    }
+
+    /// Follows the catalog builds (call it every frame): a finished folder is
+    /// opened again with its new books. Returns whether a build still runs.
+    pub fn poll_indexing(&mut self) -> bool {
+        let roots: Vec<String> = self
+            .sources
+            .iter()
+            .filter(|e| e.indexing.is_some())
+            .map(|e| e.source.path.clone())
+            .collect();
+        for root in roots {
+            match self.backend.index_state(&root) {
+                Some(IndexState::Running(p)) => {
+                    if let Some(e) = self.source_mut(&root) {
+                        e.indexing = Some(p);
+                    }
+                }
+                // A build the backend no longer knows is taken as finished.
+                Some(IndexState::Done) | None => self.index_finished(&root, None),
+                Some(IndexState::Failed(e)) => self.index_finished(&root, Some(e)),
+            }
+        }
+        self.indexing()
+    }
+
+    /// A folder's build ended (`error` when it failed): reloads its books.
+    fn index_finished(&mut self, root: &str, error: Option<String>) {
+        let Some(entry) = self.source_mut(root) else {
+            return;
+        };
+        entry.indexing = None;
+        let enabled = entry.source.enabled;
+        let had_books = !entry.books.books.is_empty();
+        if let Some(e) = error {
+            let msg = format!("building the catalog of {root} failed: {e}");
+            if enabled && !had_books {
+                self.set_source_books(
+                    root,
+                    SourceStatus::Unavailable(msg.clone()),
+                    Catalog::default(),
+                );
+            }
+            self.status = Some(msg);
+            return;
+        }
+        if !enabled {
+            return;
+        }
+        let _ = self.backend.close_source(root);
+        match self.backend.open_source(root) {
+            Ok(books) => self.set_source_books(root, SourceStatus::Loaded, books),
+            Err(e) => {
+                self.set_source_books(
+                    root,
+                    SourceStatus::Unavailable(e.clone()),
+                    Catalog::default(),
+                );
+                self.status = Some(e);
+            }
+        }
+    }
+
+    /// Marks a folder as being indexed.
+    pub(crate) fn set_indexing(&mut self, root: &str) {
+        if let Some(e) = self.source_mut(root) {
+            e.indexing = Some(IndexProgress::default());
+        }
     }
 
     /// Sets a folder's books and state (empty books when it is not loaded).
