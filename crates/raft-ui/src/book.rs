@@ -12,6 +12,7 @@ const SAVE: egui::KeyboardShortcut =
 /// The book's actions as icons, under the cover (same in both modes).
 fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
     let id = book.id.clone();
+    let outside = app.session.is_outside(&id);
     let progress = app.session.progress(&id).cloned();
     ui.horizontal(|ui| {
         let read = match progress.as_ref() {
@@ -89,7 +90,19 @@ fn actions(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
             );
         });
         ui.add_space(8.0);
-        if crate::icon_button(
+        if outside {
+            if crate::icon_button(
+                ui,
+                "✖",
+                t("Scoate din fișierele deschise"),
+                t("Scoate din fișierele deschise (fișierul rămâne pe disc)"),
+                true,
+            )
+            .clicked()
+            {
+                app.act("file.forget", json!({ "id": id }));
+            }
+        } else if crate::icon_button(
             ui,
             "🗑",
             t("Șterge cartea"),
@@ -136,6 +149,7 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
         return;
     };
     let editing = matches!(app.session.route(), raft_doc::Route::Edit { .. });
+    let outside = app.session.is_outside(&book.id);
     ui.horizontal(|ui| {
         let hint = if editing {
             t("Înapoi la pagina cărții")
@@ -164,14 +178,15 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 if crate::icon_button(ui, "✖", t("Renunță"), hint, true).clicked() {
                     crate::edit::cancel(app, &book);
                 }
-            } else if crate::icon_button(
-                ui,
-                "✏",
-                t("Corectează metadatele"),
-                t("Corectează metadatele"),
-                true,
-            )
-            .clicked()
+            } else if !outside
+                && crate::icon_button(
+                    ui,
+                    "✏",
+                    t("Corectează metadatele"),
+                    t("Corectează metadatele"),
+                    true,
+                )
+                .clicked()
             {
                 app.act("view.edit", json!({ "id": book.id }));
             }
@@ -235,8 +250,12 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         );
                         row(t("Editură"), book.publisher.clone().unwrap_or_default());
                         row(t("ISBN"), book.isbn.clone().unwrap_or_default());
-                        row(t("Fișier"), book.filename.clone());
-                        if app.session.loaded_sources().count() > 1 {
+                        if outside {
+                            row(t("Fișier"), book.file_path());
+                        } else {
+                            row(t("Fișier"), book.filename.clone());
+                        }
+                        if app.session.loaded_sources().count() > 1 && !outside {
                             row(t("Sursă"), app.session.source_name(&book.source).to_owned());
                         }
                         row(
@@ -291,9 +310,17 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         .color(crate::theme::edited()),
                     );
                 }
+                if outside {
+                    ui.label(
+                        egui::RichText::new(t(
+                            "Fișier deschis din afara bibliotecii: se citește și își păstrează progresul, dar nu apare în căutare.",
+                        ))
+                        .weak(),
+                    );
+                }
                 let missing: Vec<&str> =
                     book.missing().into_iter().map(crate::edit::label).collect();
-                if !missing.is_empty() || book.reviewed {
+                if !outside && (!missing.is_empty() || book.reviewed) {
                     ui.horizontal_wrapped(|ui| {
                         let text = if missing.is_empty() {
                             t("Nu lipsește nimic").to_owned()

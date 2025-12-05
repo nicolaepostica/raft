@@ -95,8 +95,14 @@ pub fn render_page(
     width: u32,
 ) -> Result<(Vec<u8>, Encoding), RenderError> {
     let (tool, args, encoding) = command_for(file, format, page, width)?;
+    run_tool(tool, &args).map(|out| (out, encoding))
+}
+
+/// Runs `tool` with a time limit; returns its output (an error when it fails
+/// or prints nothing).
+fn run_tool(tool: &'static str, args: &[String]) -> Result<Vec<u8>, RenderError> {
     let mut child = Command::new(tool)
-        .args(&args)
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -145,7 +151,31 @@ pub fn render_page(
         let reason = err.lines().next().unwrap_or("no output").to_owned();
         return Err(RenderError::Failed { tool, reason });
     }
-    Ok((out, encoding))
+    Ok(out)
+}
+
+/// The number of pages of a PDF (`pdfinfo`) or DjVu (`djvused -e n`) file.
+pub fn page_count(file: &Path, format: Format) -> Result<u32, RenderError> {
+    let file = file.to_string_lossy().into_owned();
+    let (tool, args) = match format {
+        Format::Pdf => ("pdfinfo", vec!["--".to_owned(), file]),
+        Format::Djvu => ("djvused", vec!["-e".to_owned(), "n".to_owned(), file]),
+        other => return Err(RenderError::Unsupported(other.slug())),
+    };
+    let out = run_tool(tool, &args)?;
+    parse_page_count(&String::from_utf8_lossy(&out)).ok_or(RenderError::Failed {
+        tool,
+        reason: "no page count in its output".into(),
+    })
+}
+
+/// The page count from `pdfinfo` ("Pages:  123") or `djvused -e n` ("123") output.
+pub fn parse_page_count(out: &str) -> Option<u32> {
+    let value = out
+        .lines()
+        .find_map(|l| l.strip_prefix("Pages:"))
+        .unwrap_or(out);
+    value.trim().parse().ok().filter(|&n| n > 0)
 }
 
 #[cfg(test)]
@@ -170,6 +200,29 @@ mod tests {
             command_for(Path::new("x"), Format::Epub, 1, 800),
             Err(RenderError::Unsupported("epub"))
         ));
+    }
+
+    #[test]
+    fn page_counts_are_read() {
+        assert_eq!(
+            parse_page_count("Title: x\nPages:          412\nEncrypted: no\n"),
+            Some(412)
+        );
+        assert_eq!(parse_page_count("37\n"), Some(37));
+        assert_eq!(parse_page_count("Pages: 0"), None);
+        assert_eq!(parse_page_count("Syntax Error: bad file"), None);
+        let p = Path::new("/backup/books/100_Go_Mistakes_and_How_to_Avoid_Them_2022.pdf");
+        if p.exists() {
+            assert!(page_count(p, Format::Pdf).unwrap() > 100);
+        }
+        assert!(page_count(Path::new("/nonexistent/x.pdf"), Format::Pdf).is_err());
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn any_output_parses_without_panic(out in ".{0,300}") {
+            let _ = parse_page_count(&out);
+        }
     }
 
     #[test]

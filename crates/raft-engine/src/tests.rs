@@ -27,6 +27,8 @@ struct Recorder {
     index: Arc<Mutex<Option<crate::IndexState>>>,
     /// The catalog of "/fresh" and "/broken" has been built.
     built: Arc<Mutex<bool>>,
+    /// Book files remembered by `save_file` (ids), most recent first.
+    files: Arc<Mutex<Vec<String>>>,
 }
 
 impl Recorder {
@@ -115,6 +117,27 @@ impl Backend for Recorder {
         for s in all.iter_mut().filter(|s| s.path == from) {
             s.path = to.into();
         }
+        Ok(())
+    }
+    fn open_file(&self, path: &str) -> Result<Book, String> {
+        // The id is the file's stem in lower case ("a" is the library's book).
+        let stem = path
+            .rsplit('/')
+            .next()
+            .and_then(|n| n.split(['.', '_']).next())
+            .unwrap_or_default()
+            .to_lowercase();
+        let pages = path.ends_with(".pdf").then_some(12);
+        Book::outside(path, stem, 100, pages).ok_or_else(|| format!("not a book file: {path}"))
+    }
+    fn save_file(&self, b: &Book) -> Result<(), String> {
+        let mut all = self.files.lock().unwrap();
+        all.retain(|id| *id != b.id);
+        all.insert(0, b.id.clone());
+        Ok(())
+    }
+    fn forget_file(&self, id: &str) -> Result<(), String> {
+        self.files.lock().unwrap().retain(|f| f != id);
         Ok(())
     }
     fn needs_index(&self, root: &str) -> bool {
@@ -593,6 +616,82 @@ fn a_folder_without_a_catalog_gets_one_built() {
         s.run("source.reindex", &json!({"path": "/elsewhere"}))
             .is_err()
     );
+}
+
+#[test]
+fn a_book_file_outside_the_library_is_read_without_joining_it() {
+    let (mut s, r) = session();
+    let results = s.result_count();
+    let out = s
+        .run("file.open", &json!({"path": "/home/u/Dune_1965.epub"}))
+        .unwrap();
+    assert_eq!(
+        (out["in_library"].clone(), out["reader"].clone()),
+        (json!(false), json!("text"))
+    );
+    assert_eq!(s.route(), &Route::Reader { id: "dune".into() });
+    assert_eq!(s.current_book().map(|b| b.title.as_str()), Some("Dune"));
+    assert!(s.is_outside("dune"));
+    assert_eq!(s.result_count(), results, "not in the search results");
+    assert_eq!(*r.files.lock().unwrap(), ["dune"]);
+    assert!(
+        r.covers.lock().unwrap().is_empty(),
+        "a text book keeps its own cover"
+    );
+
+    // A PDF gets its first page as cover and shows up in Continue reading.
+    let out = s
+        .run("file.open", &json!({"path": "/tmp/Scan.pdf"}))
+        .unwrap();
+    assert_eq!(out["page"], 1);
+    assert_eq!(*r.files.lock().unwrap(), ["scan", "dune"]);
+    assert_eq!(
+        r.covers.lock().unwrap().clone(),
+        [("scan".to_owned(), crate::CoverSource::Page(1))]
+    );
+    s.run("reader.goto", &json!({"page": 7})).unwrap();
+    assert_eq!(s.progress("scan").and_then(|p| p.page), Some(7));
+    assert!(s.continue_reading(10).iter().any(|b| b.id == "scan"));
+    // Opened again: no new cover, back on top.
+    s.run("file.open", &json!({"path": "/home/u/Dune_1965.epub"}))
+        .unwrap();
+    assert_eq!(r.covers.lock().unwrap().len(), 1);
+    assert_eq!(s.files().first().map(|b| b.id.as_str()), Some("dune"));
+
+    // Library actions are refused on it.
+    for (cmd, params) in [
+        ("book.edit", json!({"id": "dune", "fields": {"title": "X"}})),
+        ("view.edit", json!({"id": "dune"})),
+        ("book.delete", json!({"id": "dune", "confirm": true})),
+    ] {
+        assert!(
+            matches!(s.run(cmd, &params), Err(EngineError::Disabled(_))),
+            "{cmd}"
+        );
+    }
+
+    // A file that is a library book opens as that book.
+    let out = s
+        .run("file.open", &json!({"path": "/elsewhere/a.pdf"}))
+        .unwrap();
+    assert_eq!(out["in_library"], true);
+    assert_eq!(
+        s.current_book().map(|b| b.title.as_str()),
+        Some("Rust in Action")
+    );
+    assert_eq!(s.files().len(), 2);
+
+    s.run("book.read", &json!({"id": "dune"})).unwrap();
+    s.run("file.forget", &json!({"id": "dune"})).unwrap();
+    assert_eq!(s.route(), &Route::Library);
+    assert!(s.book("dune").is_none());
+    assert_eq!(*r.files.lock().unwrap(), ["scan"]);
+    assert!(s.run("file.forget", &json!({"id": "dune"})).is_err());
+    assert!(
+        s.run("file.open", &json!({"path": "/x/notes.txt"}))
+            .is_err()
+    );
+    assert!(s.run("file.open", &json!({})).is_err());
 }
 
 #[test]

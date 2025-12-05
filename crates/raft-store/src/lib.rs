@@ -8,7 +8,7 @@ use std::path::Path;
 
 use raft_doc::edits::{Field, Override};
 use raft_doc::sanitize::{BookParts, book_from_parts, json_list};
-use raft_doc::{BookId, Catalog, Category, Progress, Source};
+use raft_doc::{Book, BookId, Catalog, Category, Progress, Source};
 use rusqlite::{Connection, OpenFlags, params};
 
 /// Most books loaded from the catalog.
@@ -184,6 +184,14 @@ impl UserDb {
                  key TEXT PRIMARY KEY,
                  value TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS files(
+                 book_id TEXT PRIMARY KEY,
+                 path TEXT NOT NULL,
+                 title TEXT NOT NULL,
+                 size INTEGER NOT NULL DEFAULT 0,
+                 pages INTEGER,
+                 opened_at INTEGER NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS removed(
                  book_id TEXT PRIMARY KEY,
                  path TEXT NOT NULL,
@@ -326,6 +334,58 @@ impl UserDb {
     pub fn delete_source(&self, path: &str) -> Result<(), StoreError> {
         self.conn
             .execute("DELETE FROM sources WHERE path = ?1", [path])?;
+        Ok(())
+    }
+
+    /// Book files opened from outside the library, most recently opened first.
+    pub fn load_files(&self) -> Result<Vec<Book>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT book_id, path, title, size, pages FROM files ORDER BY opened_at DESC, rowid DESC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, Option<i64>>(4)?,
+            ))
+        })?;
+        let mut books = Vec::new();
+        for row in rows {
+            let (id, path, title, size, pages) = row?;
+            let pages = pages.and_then(|p| u32::try_from(p).ok());
+            // A row that no longer makes a book (edited by hand) is skipped.
+            if let Some(mut b) = Book::outside(&path, id, u64::try_from(size).unwrap_or(0), pages) {
+                if !title.trim().is_empty() {
+                    b.title = title;
+                }
+                books.push(b);
+            }
+        }
+        Ok(books)
+    }
+
+    /// Remembers a book file opened from outside the library (again: moves it first).
+    pub fn save_file(&self, book: &Book, at: i64) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO files(book_id, path, title, size, pages, opened_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                book.id,
+                book.file_path(),
+                book.title,
+                i64::try_from(book.size).unwrap_or(i64::MAX),
+                book.pages.map(i64::from),
+                at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_file(&self, book_id: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM files WHERE book_id = ?1", [book_id])?;
         Ok(())
     }
 
@@ -488,6 +548,38 @@ mod tests {
             db.load_sources().unwrap(),
             vec![Source::new("/backup/books")]
         );
+    }
+
+    #[test]
+    fn opened_files_round_trip() {
+        let db = UserDb::in_memory().unwrap();
+        let a = Book::outside("/home/u/Clean_Code_2008.pdf", "a".into(), 10, Some(400)).unwrap();
+        let mut b = Book::outside("/tmp/x.epub", "b".into(), 5, None).unwrap();
+        b.title = "Dune".into();
+        db.save_file(&a, 1).unwrap();
+        db.save_file(&b, 2).unwrap();
+        let ids = |db: &UserDb| {
+            db.load_files()
+                .unwrap()
+                .into_iter()
+                .map(|b| b.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&db), ["b", "a"]);
+        db.save_file(&a, 3).unwrap();
+        assert_eq!(ids(&db), ["a", "b"]);
+        let loaded = db.load_files().unwrap();
+        assert_eq!(loaded.first(), Some(&a));
+        assert_eq!(loaded.get(1).map(|b| b.title.as_str()), Some("Dune"));
+        db.conn
+            .execute(
+                "INSERT INTO files VALUES ('c', 'not/absolute.pdf', '', 0, NULL, 4)",
+                [],
+            )
+            .unwrap();
+        assert_eq!(ids(&db), ["a", "b"]);
+        db.delete_file("a").unwrap();
+        assert_eq!(ids(&db), ["b"]);
     }
 
     #[test]

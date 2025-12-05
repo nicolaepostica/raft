@@ -551,10 +551,14 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     }
     let mut y = cover_rect.top() + 4.0;
     let at = |y: f32| egui::pos2(cover_rect.left() + 4.0, y);
+    let outside = app.session.is_outside(&book.id);
+    if outside {
+        y += 2.0 + badge(&painter, at(y), t("fișier"), crate::theme::color("accent"));
+    }
     if book.edited {
         y += 2.0 + badge(&painter, at(y), t("corectată"), crate::theme::edited());
     }
-    if book.is_incomplete() {
+    if book.is_incomplete() && !outside {
         y += 2.0 + badge(&painter, at(y), t("incompletă"), crate::theme::incomplete());
     }
     if !book.duplicates.is_empty() {
@@ -604,14 +608,19 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         egui::pos2(cover_rect.right() - 30.0, cover_rect.top() + 6.0),
         egui::vec2(24.0, 24.0),
     );
+    // A file from outside the library cannot be ticked (nothing to delete in bulk).
     let tick = ui.interact(
         tick_rect,
         ui.scope_id().with(("tick", &book.id)),
-        egui::Sense::click(),
+        if outside {
+            egui::Sense::hover()
+        } else {
+            egui::Sense::click()
+        },
     );
     let label = tf("Selectează: {0}", &[&book.display_title()]);
     tick.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, selected, &label));
-    if selected || selecting || resp.hovered() || tick.hovered() {
+    if !outside && (selected || selecting || resp.hovered() || tick.hovered()) {
         let fill = if selected {
             visuals.selection.bg_fill
         } else {
@@ -643,7 +652,7 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         }
     }
     let resp = resp.on_hover_text(book.display_title());
-    if tick.clicked() || (selecting && resp.clicked()) {
+    if !outside && (tick.clicked() || (selecting && resp.clicked())) {
         // While books are ticked, a click on a card ticks it too.
         app.act("select.toggle", json!({ "id": book.id }));
     } else if resp.clicked() {

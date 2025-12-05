@@ -59,6 +59,73 @@ impl Format {
     pub const ALL: [Format; 5] = [Self::Pdf, Self::Epub, Self::Djvu, Self::Fb2, Self::Other];
 }
 
+/// Longest file path accepted for a book opened from outside the library.
+pub const MAX_FILE_PATH: usize = 4096;
+
+impl Book {
+    /// A book file opened from outside the library: its folder is the source,
+    /// its name the path, the title comes from the name (`Clean_Code_2008.pdf`
+    /// → "Clean Code"). `None` for a path that is not absolute, has no file
+    /// name, or is not a book format.
+    pub fn outside(file: &str, id: BookId, size: u64, pages: Option<u32>) -> Option<Book> {
+        if file.len() > MAX_FILE_PATH
+            || !file.starts_with('/')
+            || file.chars().any(char::is_control)
+        {
+            return None;
+        }
+        let (dir, name) = file.rsplit_once('/')?;
+        let (stem, ext) = name.rsplit_once('.')?;
+        let format = Format::from_slug(ext);
+        if format == Format::Other || stem.is_empty() || name == ".." {
+            return None;
+        }
+        Some(Book {
+            id,
+            path: name.to_owned(),
+            filename: name.to_owned(),
+            format,
+            size,
+            pages,
+            title: title_from_name(stem),
+            source: if dir.is_empty() {
+                "/".to_owned()
+            } else {
+                dir.to_owned()
+            },
+            ..Book::default()
+        })
+    }
+
+    /// The book's file as an absolute path, when its source is one.
+    pub fn file_path(&self) -> String {
+        format!("{}/{}", self.source.trim_end_matches('/'), self.path)
+    }
+}
+
+/// "Clean_Code_2008" → "Clean Code" (the year of a renamed file is dropped).
+fn title_from_name(stem: &str) -> String {
+    let words: Vec<&str> = stem
+        .split(|c: char| c == '_' || c.is_whitespace())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let year = |w: &str| {
+        w.len() == 4
+            && (w.starts_with("19") || w.starts_with("20"))
+            && w.chars().all(|c| c.is_ascii_digit())
+    };
+    let end = match words.as_slice() {
+        [.., w] if words.len() > 1 && year(w) => words.len() - 1,
+        _ => words.len(),
+    };
+    let title = words.get(..end).unwrap_or_default().join(" ");
+    if title.is_empty() {
+        stem.to_owned()
+    } else {
+        title
+    }
+}
+
 /// One book from the catalog.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Book {
@@ -403,4 +470,55 @@ pub struct State {
     pub progress: BTreeMap<BookId, Progress>,
     /// Manual metadata corrections.
     pub overrides: edits::Overrides,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn outside_books_come_from_their_path() {
+        let b = Book::outside("/home/u/Clean_Code_2008.pdf", "abc".into(), 10, Some(5)).unwrap();
+        assert_eq!(
+            (b.source.as_str(), b.path.as_str(), b.title.as_str()),
+            ("/home/u", "Clean_Code_2008.pdf", "Clean Code")
+        );
+        assert_eq!(
+            (b.format, b.pages, b.file_path()),
+            (
+                Format::Pdf,
+                Some(5),
+                "/home/u/Clean_Code_2008.pdf".to_owned()
+            )
+        );
+        let root = Book::outside("/Книга 2.fb2", "x".into(), 0, None).unwrap();
+        assert_eq!(
+            (root.source.as_str(), root.title.as_str()),
+            ("/", "Книга 2")
+        );
+        assert_eq!(root.file_path(), "/Книга 2.fb2");
+        assert_eq!(
+            Book::outside("/a/2020.epub", "x".into(), 0, None)
+                .unwrap()
+                .title,
+            "2020"
+        );
+        assert!(Book::outside("relative/a.pdf", "x".into(), 0, None).is_none());
+        assert!(Book::outside("/a/notes.txt", "x".into(), 0, None).is_none());
+        assert!(Book::outside("/a/.pdf", "x".into(), 0, None).is_none());
+        assert!(Book::outside("/a/b\n.pdf", "x".into(), 0, None).is_none());
+    }
+
+    proptest! {
+        #[test]
+        fn any_path_is_handled(path in "/?[^\\x00]{0,300}") {
+            if let Some(b) = Book::outside(&path, "x".into(), 0, None) {
+                // The same file (doubled slashes aside).
+                let parts = |p: &str| p.split('/').filter(|x| !x.is_empty()).map(str::to_owned).collect::<Vec<_>>();
+                prop_assert_eq!(parts(&b.file_path()), parts(&path));
+                prop_assert!(!b.title.is_empty());
+            }
+        }
+    }
 }

@@ -96,6 +96,19 @@ pub trait Backend: Send {
     fn index_state(&self, _root: &str) -> Option<IndexState> {
         None
     }
+    /// Reads a book file from outside the library: its id (the md5 of the
+    /// file, like the catalog's), size and page count.
+    fn open_file(&self, _path: &str) -> Result<Book, String> {
+        Err("opening files is not available here".into())
+    }
+    /// Remembers a book file opened from outside the library (most recent first).
+    fn save_file(&self, _book: &Book) -> Result<(), String> {
+        Ok(())
+    }
+    /// Forgets a book file opened from outside the library (the file stays).
+    fn forget_file(&self, _id: &str) -> Result<(), String> {
+        Ok(())
+    }
     /// Closes an open library folder (its files are not touched).
     fn close_source(&self, _root: &str) -> Result<(), String> {
         Ok(())
@@ -228,6 +241,9 @@ pub struct Session {
     language: String,
     /// Library folders the books come from, in the order they were added.
     sources: Vec<SourceEntry>,
+    /// Book files opened from outside the library, most recent first: readable,
+    /// never in the search results.
+    files: Vec<Book>,
     /// Books that belong to no configured folder (tests, the web build).
     loose: Catalog,
     /// The settings window is open (a view state, not undone).
@@ -281,6 +297,7 @@ impl Session {
             dark: false,
             language: "ro".to_owned(),
             sources: Vec::new(),
+            files: Vec::new(),
         };
         raft_search::mark_duplicates(&mut s.catalog.books);
         s.refresh();
@@ -700,10 +717,29 @@ impl Session {
         &self.facets
     }
 
+    /// A book of the library, or a file opened from outside it.
     pub fn book(&self, id: &str) -> Option<&Book> {
         self.positions
             .get(id)
             .and_then(|&i| self.catalog.books.get(i))
+            .or_else(|| self.files.iter().find(|b| b.id == id))
+    }
+
+    /// Starts with the book files opened earlier from outside the library.
+    pub fn with_files(mut self, files: Vec<Book>) -> Self {
+        self.files = files;
+        self.files.truncate(commands::MAX_FILES);
+        self
+    }
+
+    /// Book files opened from outside the library, most recent first.
+    pub fn files(&self) -> &[Book] {
+        &self.files
+    }
+
+    /// Whether the book is a file opened from outside the library (and not in it).
+    pub fn is_outside(&self, id: &str) -> bool {
+        !self.positions.contains_key(id) && self.files.iter().any(|b| b.id == id)
     }
 
     pub fn progress(&self, id: &str) -> Option<&Progress> {
@@ -715,7 +751,7 @@ impl Session {
         let mut p: Vec<&Progress> = self.state.progress.values().collect();
         p.sort_by_key(|p| std::cmp::Reverse(p.updated_at));
         p.into_iter()
-            .filter_map(|p| self.catalog.book(&p.book_id))
+            .filter_map(|p| self.book(&p.book_id))
             .take(limit)
             .collect()
     }
@@ -943,6 +979,7 @@ impl Session {
             "library_tab": self.library_tab,
             "zoom": self.zoom,
             "selected": self.selected,
+            "files": self.files.iter().map(|b| serde_json::json!({"id": b.id, "path": b.file_path(), "title": b.title})).collect::<Vec<_>>(),
         })
     }
 }

@@ -22,6 +22,8 @@ pub struct Options {
     pub data: PathBuf,
     /// Port of the local control channel, if enabled.
     pub control: Option<u16>,
+    /// A book file to open at start (`raft FILE`), from the library or outside it.
+    pub open: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Options> {
@@ -30,6 +32,7 @@ fn parse_args() -> Result<Options> {
     let mut library = env_library.map_or_else(|| PathBuf::from("/backup/books"), PathBuf::from);
     let mut data = default_data_path();
     let mut control = None;
+    let mut open = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -44,7 +47,8 @@ fn parse_args() -> Result<Options> {
             }
             "-h" | "--help" => {
                 println!(
-                    "raft [--library DIR] [--data FILE] [--control PORT]\n\n\
+                    "raft [--library DIR] [--data FILE] [--control PORT] [BOOK]\n\n\
+                     BOOK             a PDF, DjVu, EPUB or FB2 file to read (it need not be in the library)\n\
                      --library DIR    a library folder with catalog.db and covers/, added to the saved ones\n\
                                       (first run: default /backup/books, or $RAFT_LIBRARY)\n\
                      --data FILE      the app's database (default ~/.local/share/raft/raft.db)\n\
@@ -52,7 +56,10 @@ fn parse_args() -> Result<Options> {
                 );
                 std::process::exit(0);
             }
-            other => bail!("unknown argument `{other}` (see --help)"),
+            other if other.starts_with('-') => bail!("unknown argument `{other}` (see --help)"),
+            // A file manager passes the book to open (Exec=raft %f).
+            other if open.is_none() => open = Some(other.into()),
+            other => bail!("only one book file can be opened, got `{other}` too"),
         }
     }
     Ok(Options {
@@ -60,6 +67,7 @@ fn parse_args() -> Result<Options> {
         library_given,
         data,
         control,
+        open,
     })
 }
 
@@ -199,14 +207,24 @@ fn main() -> Result<()> {
         _ => backend.load_dark()?,
     };
     let zoom = backend.load_zoom()?.unwrap_or(1.0);
+    let opened = backend.load_files()?;
     let files = native::NativeFiles::new(&opts.data);
     let session = Session::new(raft_doc::Catalog::default(), progress, Box::new(backend))
         .with_overrides(overrides)
         .with_dark(dark)
         .with_language(&language)
         .with_zoom(zoom)
-        .load_sources(sources);
-    let ui = RaftUi::new(session, Box::new(files));
+        .load_sources(sources)
+        .with_files(opened);
+    let mut ui = RaftUi::new(session, Box::new(files));
+    if let Some(book) = &opts.open {
+        // Relative to where raft was started; a failure shows in the status bar.
+        let path = std::path::absolute(book).unwrap_or_else(|_| book.clone());
+        let _ = ui.run(
+            "file.open",
+            serde_json::json!({ "path": path.to_string_lossy() }),
+        );
+    }
 
     let viewport = egui::ViewportBuilder::default()
         .with_title("Raft")

@@ -309,6 +309,17 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("view.book", "Pagina cărții", view_book)
     },
     CommandSpec {
+        menu: Some("File/Open a book file"),
+        shortcut: ctrl_shift("O"),
+        params: r#"{"path": string} (a PDF, DjVu, EPUB or FB2 outside the library: read without adding it; a book already in the library opens as that book)"#,
+        ..spec("file.open", "Deschide un fișier…", file_open)
+    },
+    CommandSpec {
+        params: r#"{"id": string} (the file itself is not touched)"#,
+        record: false,
+        ..spec("file.forget", "Scoate din fișierele deschise", file_forget)
+    },
+    CommandSpec {
         params: r#"{"id": string?} (default: current book)"#,
         ..spec("book.read", "Citește", book_read)
     },
@@ -909,10 +920,70 @@ fn book_id(s: &Session, p: &Value) -> Result<String, EngineError> {
             .map(|b| b.id.clone())
             .ok_or_else(|| EngineError::BadParams("missing `id`".into()))?,
     };
-    if s.catalog.book(&id).is_none() {
+    if s.book(&id).is_none() {
         return Err(EngineError::NotFound(format!("book `{id}`")));
     }
     Ok(id)
+}
+
+/// Like [`book_id`], for actions on the library's books only (corrections,
+/// deletion): a file opened from outside it has no catalog entry to change.
+fn library_book_id(s: &Session, p: &Value) -> Result<String, EngineError> {
+    let id = book_id(s, p)?;
+    if s.is_outside(&id) {
+        return Err(EngineError::Disabled(
+            "the book is a file opened from outside the library".into(),
+        ));
+    }
+    Ok(id)
+}
+
+/// Most book files remembered from outside the library.
+pub const MAX_FILES: usize = 200;
+
+fn file_open(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let path = str(p, "path")?.trim();
+    if path.is_empty() || path.len() > raft_doc::MAX_FILE_PATH || path.chars().any(char::is_control)
+    {
+        return Err(bad("`path` must be a file path"));
+    }
+    let book = s.backend.open_file(path).map_err(EngineError::Backend)?;
+    let id = book.id.clone();
+    let in_library = s.positions.contains_key(&id);
+    if !in_library {
+        let known = s.files.iter().any(|b| b.id == id);
+        s.files.retain(|b| b.id != id);
+        s.files.insert(0, book.clone());
+        s.files.truncate(MAX_FILES);
+        if let Err(e) = s.backend.save_file(&book) {
+            s.status = Some(e);
+        }
+        if !known && book.format.is_paged() {
+            // Its cover is its first page (not having one is no error).
+            if s.backend.set_cover(&book, &CoverSource::Page(1)).is_ok() {
+                s.bump_cover(&id);
+            }
+        }
+    }
+    let mut out = book_read(s, &json!({ "id": id }))?;
+    if let Some(o) = out.as_object_mut() {
+        o.insert("id".into(), json!(id));
+        o.insert("in_library".into(), json!(in_library));
+    }
+    Ok(out)
+}
+
+fn file_forget(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = str(p, "id")?.to_owned();
+    if !s.files.iter().any(|b| b.id == id) {
+        return Err(EngineError::NotFound(format!("opened file `{id}`")));
+    }
+    s.backend.forget_file(&id).map_err(EngineError::Backend)?;
+    if s.is_outside(&id) && s.current_book().is_some_and(|b| b.id == id) {
+        s.state.route = Route::Library;
+    }
+    s.files.retain(|b| b.id != id);
+    Ok(Value::Null)
 }
 
 fn view_book(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
@@ -924,7 +995,6 @@ fn view_book(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 fn book_read(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = book_id(s, p)?;
     let book = s
-        .catalog
         .book(&id)
         .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
     if book.format.is_paged() {
@@ -964,7 +1034,6 @@ fn book_read(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 fn open_external(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = book_id(s, p)?;
     let book = s
-        .catalog
         .book(&id)
         .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
     s.backend
@@ -984,7 +1053,7 @@ fn reader_book(s: &Session) -> Result<String, EngineError> {
 
 /// Moves the reader to `page` (clamped to the book) and records progress.
 fn set_page(s: &mut Session, id: &str, page: i64) -> Result<u32, EngineError> {
-    let pages = s.catalog.book(id).and_then(|b| b.pages).unwrap_or(0);
+    let pages = s.book(id).and_then(|b| b.pages).unwrap_or(0);
     let max = i64::from(pages.max(1));
     let page = u32::try_from(page.clamp(1, max)).unwrap_or(1);
     let percent = if pages > 0 {
@@ -1178,13 +1247,13 @@ fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError
 }
 
 fn view_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let id = book_id(s, p)?;
+    let id = library_book_id(s, p)?;
     s.state.route = Route::Edit { id };
     Ok(Value::Null)
 }
 
 fn book_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let id = book_id(s, p)?;
+    let id = library_book_id(s, p)?;
     let fields = p
         .get("fields")
         .and_then(Value::as_object)
@@ -1220,7 +1289,7 @@ fn book_edit(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 }
 
 fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let id = book_id(s, p)?;
+    let id = library_book_id(s, p)?;
     let field = opt_str(p, "field")?
         .map(|f| Field::from_slug(f).ok_or_else(|| bad(format!("unknown field `{f}`"))))
         .transpose()?;
@@ -1252,7 +1321,7 @@ fn book_edit_reset(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 }
 
 fn book_review(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let id = book_id(s, p)?;
+    let id = library_book_id(s, p)?;
     let current = s.book(&id).is_some_and(|b| b.reviewed);
     let on = opt_bool(p, "on")?.unwrap_or(!current);
     set_mark(s, &id, Field::Reviewed, on);
@@ -1260,7 +1329,7 @@ fn book_review(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 }
 
 fn book_not_duplicate(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let id = book_id(s, p)?;
+    let id = library_book_id(s, p)?;
     let current = s.book(&id).is_some_and(|b| b.not_duplicate);
     let on = opt_bool(p, "on")?.unwrap_or(!current);
     set_mark(s, &id, Field::NotDuplicate, on);
@@ -1327,7 +1396,7 @@ fn cover_set(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 }
 
 fn book_delete(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
-    let id = book_id(s, p)?;
+    let id = library_book_id(s, p)?;
     if opt_bool(p, "confirm")? != Some(true) {
         return Err(bad(
             "deleting moves the file to the trash; pass `confirm: true`",

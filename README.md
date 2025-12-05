@@ -33,6 +33,11 @@ and Russian, in one folder with a SQLite catalog next to them.
   cover once one is ticked; while books are ticked a click on a cover ticks it too, Esc
   clears). The bar above the grid selects every result or none and moves the ticked books
   to the trash, after a confirmation listing them.
+- **Books from outside the library:** File → Open a file… (Ctrl+Shift+O), a book file
+  dropped on the window, `raft BOOK` or "Open with" in the file manager read a PDF, DjVu, EPUB
+  or FB2 without adding it to the library. It keeps its progress, shows in Continue reading
+  with a "file" mark (a PDF/DjVu gets its first page as cover) and never in the search
+  results; a file that is a library book (same md5) opens as that book.
 - **Several library folders:** add more folders (another disk, an external drive) with
   File → Settings (Ctrl+,) → Add a folder; each has its own `catalog.db` made by
   `build-catalog DIR`. A folder without one gets it from the app: `build-catalog DIR --no-ai`
@@ -60,6 +65,7 @@ cargo run --release -p raft -- --library /backup/books
 
 | Option | Meaning |
 |---|---|
+| `BOOK` | a PDF, DjVu, EPUB or FB2 file to read at start; it need not be in the library |
 | `--library DIR` | a library folder with `catalog.db` and `covers/`, added to the saved ones (on the first run the default is `/backup/books`, or `$RAFT_LIBRARY`) |
 | `--data FILE` | the app's own database: progress, corrections, settings (default `~/.local/share/raft/raft.db`) |
 | `--control PORT` | a local JSON control channel on `127.0.0.1:PORT` (commands, state, screenshots) |

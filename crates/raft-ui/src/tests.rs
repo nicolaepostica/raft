@@ -861,3 +861,31 @@ fn continue_reading_has_its_own_tab() {
     h.run();
     h.get_by_label("Filtre");
 }
+
+#[test]
+fn a_file_from_outside_the_library_has_its_own_page() {
+    let mut ui = app();
+    let file = Book::outside("/home/u/Dune_1965.epub", "dune".into(), 2_000_000, None).unwrap();
+    ui.session = std::mem::replace(
+        &mut ui.session,
+        Session::new(Catalog::default(), vec![], Box::new(NullBackend)),
+    )
+    .with_files(vec![file]);
+    ui.run("view.book", serde_json::json!({"id": "dune"}))
+        .unwrap();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.run();
+    h.get_by_label("Dune");
+    h.get_by_label("/home/u/Dune_1965.epub");
+    h.get_by_label_contains("Fișier deschis din afara bibliotecii");
+    assert!(h.query_by_label("Corectează metadatele").is_none());
+    assert!(h.query_by_label("Șterge cartea").is_none());
+    h.get_by_label("Scoate din fișierele deschise").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Library);
+    assert!(h.state().session.files().is_empty());
+    // Not in the library's results either.
+    h.get_by_label("2 din 2 cărți");
+}

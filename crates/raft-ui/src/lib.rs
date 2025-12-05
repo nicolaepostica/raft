@@ -42,6 +42,10 @@ pub trait Files {
     fn pick_image(&self, _title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
         None
     }
+    /// Opens a chooser for a book file (PDF, DjVu, EPUB, FB2), like [`Files::pick_image`].
+    fn pick_book(&self, _title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        None
+    }
     /// Opens a folder chooser, like [`Files::pick_image`].
     fn pick_folder(&self, _title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
         None
@@ -117,8 +121,31 @@ impl RaftUi {
 
     /// Runs a command from a UI event; errors go to the status bar.
     fn act(&mut self, id: &str, params: Value) {
+        if id == "file.open" && params.get("path").is_none() {
+            // From the menu or the shortcut: the file is chosen first.
+            pick_book(self);
+            return;
+        }
         // The error is already recorded in `session.status`.
         let _ = self.run(id, params);
+    }
+
+    /// A book file dropped on the window is opened (an image is left to the
+    /// book page, where it becomes the cover).
+    fn open_dropped(&mut self, ctx: &egui::Context) {
+        let book = ctx.input_mut(|i| {
+            let pos = i.raw.dropped_files.iter().position(|f| {
+                f.path()
+                    .extension()
+                    .is_some_and(|e| is_book_extension(&e.to_string_lossy()))
+            })?;
+            let path = i.raw.dropped_files.get(pos)?.path().to_path_buf();
+            i.raw.dropped_files.clear();
+            Some(path)
+        });
+        if let Some(path) = book {
+            self.act("file.open", json!({ "path": path.to_string_lossy() }));
+        }
     }
 
     /// Draws one frame.
@@ -136,6 +163,7 @@ impl RaftUi {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(500));
         }
+        self.open_dropped(ui.ctx());
         self.shortcuts(ui.ctx());
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
@@ -185,6 +213,7 @@ impl RaftUi {
                         self.act("book.cover.set", json!({ "id": id, "path": path }));
                     }
                     Pick::Folder => self.act("source.add", json!({ "path": path })),
+                    Pick::Book => self.act("file.open", json!({ "path": path })),
                     Pick::Move(from) => {
                         self.act("source.edit", json!({ "path": from, "new_path": path }));
                     }
@@ -429,8 +458,31 @@ pub(crate) enum Pick {
     Cover(BookId),
     /// A library folder to add.
     Folder,
+    /// A book file to open from outside the library.
+    Book,
     /// The new place of the library folder at this path.
     Move(String),
+}
+
+/// Book file extensions the app reads (any case).
+pub(crate) fn is_book_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "pdf" | "djvu" | "epub" | "fb2"
+    )
+}
+
+/// Opens the chooser for a book file to read.
+pub(crate) fn pick_book(app: &mut RaftUi) {
+    if app.picking.is_some() {
+        return;
+    }
+    match app.files.pick_book(t("Deschide o carte")) {
+        Some(rx) => app.picking = Some((Pick::Book, rx)),
+        None => {
+            app.session.status = Some(t("alegerea fișierelor nu e disponibilă aici").into());
+        }
+    }
 }
 
 /// Opens the folder chooser for a new library folder.

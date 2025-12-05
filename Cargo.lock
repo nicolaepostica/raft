@@ -2882,6 +2882,7 @@ dependencies = [
 name = "raft-doc"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "serde",
  "serde_json",
 ]
@@ -2902,6 +2903,7 @@ dependencies = [
 name = "raft-render"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "raft-doc",
  "thiserror 2.0.21",
 ]

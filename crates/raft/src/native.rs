@@ -38,6 +38,11 @@ impl NativeBackend {
         })
     }
 
+    /// Book files opened earlier from outside the library, most recent first.
+    pub fn load_files(&self) -> Result<Vec<Book>> {
+        Ok(self.user.load_files()?)
+    }
+
     /// The saved library folders, in the order they were added.
     pub fn saved_sources(&self) -> Result<Vec<Source>> {
         Ok(self.user.load_sources()?)
@@ -69,6 +74,26 @@ impl NativeBackend {
     pub fn load_dark(&self) -> Result<bool> {
         Ok(self.user.setting("theme")?.as_deref() == Some("dark"))
     }
+}
+
+/// The md5 of a file (a book's id, as `build-catalog` computes it), by `md5sum`.
+fn md5_of(file: &Path) -> Result<String, String> {
+    let out = std::process::Command::new("md5sum")
+        .arg("--")
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("md5sum: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let hash = text.get(..32).unwrap_or_default();
+    if !out.status.success() || !hash.bytes().all(|b| b.is_ascii_hexdigit()) || hash.len() != 32 {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(format!(
+            "md5sum failed: {}",
+            err.lines().next().unwrap_or("no output")
+        ));
+    }
+    Ok(hash.to_ascii_lowercase())
 }
 
 /// The book's file: its path joined to its library folder.
@@ -127,6 +152,49 @@ impl Backend for NativeBackend {
         catalogs.retain(|(r, _)| r != root);
         catalogs.push((root.to_owned(), db));
         Ok(catalog)
+    }
+
+    fn open_file(&self, path: &str) -> Result<Book, String> {
+        let file = Path::new(path);
+        if !file.is_absolute() {
+            return Err(format!("`{path}` is not an absolute file path"));
+        }
+        let meta = std::fs::metadata(file).map_err(|e| format!("{path}: {e}"))?;
+        if !meta.is_file() {
+            return Err(format!("{path} is not a file"));
+        }
+        let probe = Book::outside(path, String::new(), 0, None)
+            .ok_or_else(|| format!("{path} is not a PDF, DjVu, EPUB or FB2 book"))?;
+        let id = md5_of(file)?;
+        let pages = if probe.format.is_paged() {
+            Some(raft_render::page_count(file, probe.format).map_err(|e| e.to_string())?)
+        } else {
+            None
+        };
+        let mut book = Book::outside(path, id, meta.len(), pages)
+            .ok_or_else(|| format!("{path} is not a book file"))?;
+        if book.format.is_text() {
+            // The title written in the book; the file name when it has none (or
+            // does not parse: the reader shows why).
+            let title = read_capped(file, raft_text::MAX_INPUT)
+                .and_then(|b| raft_text::parse(&b, book.format).map_err(|e| e.to_string()))
+                .map(|t| t.title.trim().to_owned())
+                .unwrap_or_default();
+            if !title.is_empty() {
+                book.title = title.chars().take(300).collect();
+            }
+        }
+        Ok(book)
+    }
+
+    fn save_file(&self, book: &Book) -> Result<(), String> {
+        self.user
+            .save_file(book, self.now())
+            .map_err(|e| e.to_string())
+    }
+
+    fn forget_file(&self, id: &str) -> Result<(), String> {
+        self.user.delete_file(id).map_err(|e| e.to_string())
     }
 
     fn needs_index(&self, root: &str) -> bool {
@@ -491,6 +559,13 @@ impl Files for NativeFiles {
         ])
     }
 
+    fn pick_book(&self, title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
+        zenity(vec![
+            "--file-selection".into(),
+            format!("--title={title}"),
+            "--file-filter=* | *.pdf *.djvu *.epub *.fb2 *.PDF *.DJVU *.EPUB *.FB2".into(),
+        ])
+    }
     fn pick_folder(&self, title: &str) -> Option<std::sync::mpsc::Receiver<Option<String>>> {
         zenity(vec![
             "--file-selection".into(),
@@ -627,6 +702,46 @@ mod tests {
             vec![Source::new("/mnt/one")]
         );
         assert_eq!(c1.books.len(), 1);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn outside_files_open_with_their_md5_and_pages() {
+        let tmp = std::env::temp_dir().join(format!("raft-outside-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let epub = tmp.join("Dune_1965.epub");
+        std::fs::write(&epub, b"abc").unwrap();
+        let backend = NativeBackend::open(&tmp.join("data/raft.db")).unwrap();
+        let book = backend.open_file(&epub.to_string_lossy()).unwrap();
+        // md5("abc")
+        assert_eq!(book.id, "900150983cd24fb0d6963f7d28e17f72");
+        assert_eq!(
+            (book.title.as_str(), book.size, book.pages),
+            ("Dune", 3, None)
+        );
+        assert_eq!(book_file(&book), Some(epub.clone()));
+        backend.save_file(&book).unwrap();
+        assert_eq!(backend.load_files().unwrap(), vec![book.clone()]);
+        backend.forget_file(&book.id).unwrap();
+        assert!(backend.load_files().unwrap().is_empty());
+
+        let txt = tmp.join("notes.txt");
+        std::fs::write(&txt, b"x").unwrap();
+        assert!(backend.open_file(&txt.to_string_lossy()).is_err());
+        assert!(backend.open_file("relative.pdf").is_err());
+        assert!(backend.open_file(&tmp.to_string_lossy()).is_err());
+        let broken = tmp.join("broken.pdf");
+        std::fs::write(&broken, b"not a pdf").unwrap();
+        assert!(
+            backend.open_file(&broken.to_string_lossy()).is_err(),
+            "no page count"
+        );
+        let real = Path::new("/backup/books/100_Go_Mistakes_and_How_to_Avoid_Them_2022.pdf");
+        if real.exists() {
+            let b = backend.open_file(&real.to_string_lossy()).unwrap();
+            assert!(b.pages.is_some_and(|p| p > 100));
+            assert_eq!(b.title, "100 Go Mistakes and How to Avoid Them");
+        }
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

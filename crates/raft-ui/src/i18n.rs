@@ -214,6 +214,25 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "building the catalog…",
         "создаётся каталог…",
     ),
+    // Book files opened from outside the library.
+    ("Deschide un fișier…", "Open a file…", "Открыть файл…"),
+    ("Deschide o carte", "Open a book", "Открыть книгу"),
+    (
+        "Scoate din fișierele deschise",
+        "Remove from the opened files",
+        "Убрать из открытых файлов",
+    ),
+    (
+        "Scoate din fișierele deschise (fișierul rămâne pe disc)",
+        "Remove from the opened files (the file stays on disk)",
+        "Убрать из открытых файлов (файл остаётся на диске)",
+    ),
+    (
+        "Fișier deschis din afara bibliotecii: se citește și își păstrează progresul, dar nu apare în căutare.",
+        "A file opened from outside the library: it is read and keeps its progress, but does not show in search.",
+        "Файл открыт не из библиотеки: читается и сохраняет прогресс, но не появляется в поиске.",
+    ),
+    ("fișier", "file", "файл"),
     (
         "catalog: {0} din {1}",
         "catalog: {0} of {1}",
