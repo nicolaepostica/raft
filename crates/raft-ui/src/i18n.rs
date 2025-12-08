@@ -823,6 +823,11 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "DIY, renovation, home",
         "Своими руками, ремонт, дом",
     ),
+    (
+        "Medicină, sănătate",
+        "Medicine, health",
+        "Медицина, здоровье",
+    ),
     ("Beletristică", "Fiction", "Художественная литература"),
     ("Fantasy", "Fantasy", "Фэнтези"),
     ("LitRPG", "LitRPG", "ЛитРПГ"),

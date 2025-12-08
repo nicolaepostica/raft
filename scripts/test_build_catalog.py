@@ -126,7 +126,12 @@ class CleanCategoriesTest(unittest.TestCase):
         self.assertEqual(cc(['other'], ['misc'], 'Something'), ['other'])
         self.assertEqual(cc(['other'], ['c++', 'boost'], 'C++ для профи'), ['c-cpp'])
         self.assertEqual(cc(['other'], ['english', 'grammar'], 'Грамматика'), ['languages-learning'])
-        self.assertEqual(cc(['other'], ['medicine'], 'Справочник'), ['other'])
+        # Medical handbooks the fiction rule took for novels; a novel about a healer stays fiction.
+        self.assertEqual(cc(['fiction'], ['hematology', 'anemia'], 'Заболевания крови'), ['medicine'])
+        self.assertEqual(cc(['other'], ['medicine'], 'Справочник'), ['medicine'])
+        self.assertEqual(cc(['self-development'], ['eye-health'], 'Зрение'), ['medicine', 'self-development'])
+        self.assertEqual(cc(['fiction', 'fantasy'], ['fantasy', 'medicine'], 'Лекарь'), ['fiction', 'fantasy'])
+        self.assertEqual(cc(['devops'], ['diagnostics', 'linux'], 'Linux'), ['devops'])
 
 
 class HelpersTest(unittest.TestCase):

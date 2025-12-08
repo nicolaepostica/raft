@@ -72,6 +72,7 @@ CATEGORIES = {
     'business': 'Business, economie, finanțe',
     'history-bio': 'Istorie, biografii',
     'diy-home': 'Bricolaj, renovare, casă',
+    'medicine': 'Medicină, sănătate',
     'fiction': 'Beletristică',
     'fantasy': 'Fantasy',
     'litrpg': 'LitRPG',
@@ -143,6 +144,15 @@ OTHER_TOPIC_TAGS = {
     'design-ux': {'design', 'color', 'colour-theory', 'color-theory', 'typography', 'graphic-design'},
     'business': {'logistics', 'логистика', 'mba', 'marketing', 'management', 'social-media'},
 }
+# Tags that make a non-fiction book a medical one. Only unambiguous ones: 'diagnostics',
+# 'treatment' or 'symptoms' also tag IT books; novels about healers carry 'medicine' too, so
+# a book with fiction tags is left alone.
+MEDICAL_TAGS = {'medicine', 'medical', 'medicina', 'медицина', 'medical-reference', 'clinical-reference',
+                'physical-diagnosis', 'evidence-based-medicine', 'pharmacy', 'pharmacology', 'medicines',
+                'dermatology', 'hematology', 'cardiology', 'pediatrics', 'infectious-diseases',
+                'skin-diseases', 'blood-diseases', 'laboratory-tests', 'pathology', 'paramedic',
+                'emergency-medicine', 'emergency-care', 'first-aid', 'eye-health', 'medical-examination',
+                'anatomy', 'physiology'}
 # Languages without a category: a book about one keeps 'other-languages' next to others.
 OTHER_LANGUAGE_TAGS = {'swift', 'objective-c', 'ruby', 'perl', 'lua', 'haskell', 'scala', 'clojure',
                        'elixir', 'erlang', 'r', 'julia', 'visual-basic', 'vba', 'vb.net', 'powershell',
@@ -312,6 +322,8 @@ def ask_ai(meta, text, filename, model):
         'Haskell...): never for Java, Kotlin, C, C++, C#, Go, Rust, Python, JavaScript or TypeScript '
         '(use their slugs), never next to the category that already covers the language (Android, '
         'Flutter, Angular), and never for human languages (English textbooks are "languages-learning").\n'
+        '  Medicine, health, diseases, pharmacy, medical handbooks: "medicine" (a novel about a doctor '
+        'stays fiction).\n'
         '  A language slug (python, java-kotlin, c-cpp...) only when the book teaches or uses THAT language. '
         '"other" only alone, when nothing else fits.\n'
         '- tags: 2 to 8 short lowercase keywords (technologies, topics) in English.\n'
@@ -619,7 +631,8 @@ def clean_categories(cats, tags, title):
       it has one (Java, Go), else dropped (JavaScript, PHP); a book naming none keeps it;
     - 'languages-learning' next to a programming category (a "programming language" book);
     - 'other' next to any other category; 'other' on woodworking / home repair -> 'diy-home';
-      'other' alone -> the category of the language or topic its tags name."""
+      'other' alone -> the category of the language or topic its tags name;
+    - a non-fiction book with medical tags -> 'medicine' first (no 'fiction', 'other', 'career')."""
     tags_l = [t.lower() for t in tags]
     named = mentioned_languages(tags, title)
     # A wrong language category gives way to the named language's own category, if it has one.
@@ -637,6 +650,10 @@ def clean_categories(cats, tags, title):
         out.remove('languages-learning')
     if 'other' in out and any(t in DIY_TAGS for t in tags_l):
         out = ['diy-home' if c == 'other' else c for c in out]
+    fiction_words = FICTION_TAGS.union(*GENRE_TAGS.values())
+    if (any(t in MEDICAL_TAGS for t in tags_l) and not any(t in fiction_words for t in tags_l)
+            and not any(c in GENRE_TAGS for c in out)):
+        out = ['medicine'] + [c for c in out if c not in ('medicine', 'fiction', 'other', 'career')]
     if out == ['other']:
         named_own = sorted(c for c in named if c in LANGUAGE_CATEGORIES)
         topic = next((c for c, words in OTHER_TOPIC_TAGS.items() if any(t in words for t in tags_l)), None)
