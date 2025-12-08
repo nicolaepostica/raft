@@ -171,25 +171,40 @@ fn folders(
         return;
     }
     ui.add_space(6.0);
-    let title = tf("Foldere ({0})", &[&facets.folders.len()]);
+    // The checked folders stay in sight, above the list they were picked from (which can
+    // hold a hundred series); a checked folder the facet no longer counts shows with 0.
+    let dirs = selected_first(&facets.folders, &filters.folders, usize::MAX);
+    let (checked, rest) = dirs.split_at(filters.folders.len().min(dirs.len()));
+    let mut toggle = |ui: &mut egui::Ui, dir: &String, n: usize, on: bool| {
+        let mut on = on;
+        let label = format!("{}  ({n})", app.session.folder_label(dir));
+        if ui
+            .checkbox(&mut on, label)
+            .on_hover_text(dir.as_str())
+            .changed()
+        {
+            app.act("filter.folder.toggle", json!({ "path": dir }));
+        }
+    };
+    if !checked.is_empty() {
+        ui.strong(t("Foldere"));
+        for (dir, n) in checked {
+            toggle(ui, dir, *n, true);
+        }
+    }
+    if rest.is_empty() {
+        return;
+    }
+    let title = if checked.is_empty() {
+        tf("Foldere ({0})", &[&rest.len()])
+    } else {
+        tf("Alte foldere ({0})", &[&rest.len()])
+    };
     egui::CollapsingHeader::new(title)
         .id_salt("folders")
-        .default_open(!filters.folders.is_empty())
         .show(ui, |ui| {
-            let dirs = selected_first(&facets.folders, &filters.folders, usize::MAX);
-            for (i, (dir, n)) in dirs.iter().enumerate() {
-                if i == filters.folders.len() && i > 0 {
-                    ui.separator();
-                }
-                let mut on = filters.folders.contains(dir);
-                let label = format!("{}  ({n})", app.session.folder_label(dir));
-                if ui
-                    .checkbox(&mut on, label)
-                    .on_hover_text(dir.as_str())
-                    .changed()
-                {
-                    app.act("filter.folder.toggle", json!({ "path": dir }));
-                }
+            for (dir, n) in rest {
+                toggle(ui, dir, *n, false);
             }
         });
 }

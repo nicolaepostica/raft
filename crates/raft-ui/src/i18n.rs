@@ -172,6 +172,12 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Sursă", "Source", "Источник"),
     ("Folder", "Folder", "Папка"),
     ("Foldere ({0})", "Folders ({0})", "Папки ({0})"),
+    ("Foldere", "Folders", "Папки"),
+    (
+        "Alte foldere ({0})",
+        "Other folders ({0})",
+        "Другие папки ({0})",
+    ),
     (
         "Arată cărțile din folder",
         "Show the books in the folder",

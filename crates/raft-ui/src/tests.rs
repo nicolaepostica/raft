@@ -622,6 +622,12 @@ fn subfolders_are_a_filter_and_a_link_on_the_book_page() {
     h.get_by_label("Tolstoy  (1)").click();
     h.run();
     assert_eq!(h.state().session.result_count(), 1);
+    // The checked folder stays in sight above the list, which now holds only the others.
+    h.get_by_label("Foldere");
+    // Still open from before (same id): the list holds only the unchecked folder.
+    h.get_by_label("Alte foldere (1)");
+    h.get_by_label("Rust  (1)");
+    assert_eq!(h.get_all_by_label("Tolstoy  (1)").count(), 1);
     h.state_mut()
         .run("view.book", serde_json::json!({"id": "a"}))
         .unwrap();
