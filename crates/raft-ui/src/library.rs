@@ -116,7 +116,11 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         {
             app.act("filter.primary_only", json!({ "on": primary }));
         }
-        for (slug, n) in facets.categories.iter().take(TOP_CATEGORIES) {
+        let cats = selected_first(&facets.categories, &filters.categories, TOP_CATEGORIES);
+        for (i, (slug, n)) in cats.iter().enumerate() {
+            if i == filters.categories.len() && i > 0 {
+                ui.separator();
+            }
             let mut on = filters.categories.contains(slug);
             let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
             if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
@@ -125,6 +129,34 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         }
         folders(app, ui, &facets, &filters);
     });
+}
+
+/// A facet list with the checked entries first (in the facet's order), so they need no
+/// searching for: then up to `top` of the others. A checked entry the facet no longer
+/// counts is listed with 0, so it can still be unchecked.
+fn selected_first(
+    items: &[(String, usize)],
+    selected: &std::collections::BTreeSet<String>,
+    top: usize,
+) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = items
+        .iter()
+        .filter(|(k, _)| selected.contains(k))
+        .cloned()
+        .collect();
+    for s in selected {
+        if !items.iter().any(|(k, _)| k == s) {
+            out.push((s.clone(), 0));
+        }
+    }
+    out.extend(
+        items
+            .iter()
+            .filter(|(k, _)| !selected.contains(k))
+            .take(top)
+            .cloned(),
+    );
+    out
 }
 
 /// The "Folders" section: the subfolders of the library folders (one per author or
@@ -144,7 +176,11 @@ fn folders(
         .id_salt("folders")
         .default_open(!filters.folders.is_empty())
         .show(ui, |ui| {
-            for (dir, n) in &facets.folders {
+            let dirs = selected_first(&facets.folders, &filters.folders, usize::MAX);
+            for (i, (dir, n)) in dirs.iter().enumerate() {
+                if i == filters.folders.len() && i > 0 {
+                    ui.separator();
+                }
                 let mut on = filters.folders.contains(dir);
                 let label = format!("{}  ({n})", app.session.folder_label(dir));
                 if ui
@@ -657,5 +693,31 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         app.act("select.toggle", json!({ "id": book.id }));
     } else if resp.clicked() {
         app.act("view.book", json!({ "id": book.id }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::selected_first;
+
+    #[test]
+    fn checked_entries_come_first_and_never_vanish() {
+        let items: Vec<(String, usize)> =
+            [("python", 9), ("fiction", 7), ("diy-home", 3), ("odoo", 1)]
+                .iter()
+                .map(|(k, n)| ((*k).to_owned(), *n))
+                .collect();
+        let sel = ["odoo", "diy-home", "gone"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let list = selected_first(&items, &sel, 1);
+        let got: Vec<(&str, usize)> = list.iter().map(|(k, n)| (k.as_str(), *n)).collect();
+        assert_eq!(
+            got,
+            [("diy-home", 3), ("odoo", 1), ("gone", 0), ("python", 9)]
+        );
+        let none = selected_first(&items, &Default::default(), 2);
+        assert_eq!(none.len(), 2);
     }
 }
