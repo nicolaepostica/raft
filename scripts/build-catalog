@@ -12,6 +12,8 @@ Usage:
     build-catalog --json             # also export DIR/catalog.json
     build-catalog --clean-only       # only strip download-site addresses from the indexed text
     build-catalog --fix-categories   # only put the fiction categories right (no AI)
+    build-catalog --category diy-home "The Family Handyman"
+                                     # only set the category of every book under these folders
 
 The script can be run any number of times: a book is identified by the md5 of its content, so
 renaming or moving a file keeps its cover and metadata. Deleted books leave the catalog.
@@ -69,6 +71,7 @@ CATEGORIES = {
     'self-development': 'Dezvoltare personală, psihologie',
     'business': 'Business, economie, finanțe',
     'history-bio': 'Istorie, biografii',
+    'diy-home': 'Bricolaj, renovare, casă',
     'fiction': 'Beletristică',
     'fantasy': 'Fantasy',
     'litrpg': 'LitRPG',
@@ -258,6 +261,7 @@ def ask_ai(meta, text, filename, model):
         '- categories: 1 to 3 slugs from this fixed list, most relevant first:\n' + cats + '\n'
         '  A novel or a story: "fiction" first, then its genres (fantasy, litrpg, sci-fi, alt-history); '
         'never "other" for fiction.\n'
+        '  Home repair, renovation, woodworking, gardening or DIY (books and magazines): "diy-home".\n'
         '- tags: 2 to 8 short lowercase keywords (technologies, topics) in English.\n'
         '- description: 2-3 sentences in ROMANIAN (with correct diacritics) about what the book covers and for whom.\n\n'
         f'FILE NAME: {filename}\nMETADATA: {json.dumps(meta, ensure_ascii=False)}\n---TEXT---\n{text[:5000]}\n---END---'
@@ -536,6 +540,26 @@ def fix_categories(db):
     return changed
 
 
+def set_category(db, slug, folders):
+    """Gives every book under the folders (relative to the library) the one category slug;
+    returns how many books it covers. A folder with no book is an error, to catch typos."""
+    if slug not in CATEGORIES:
+        raise SystemExit(f'unknown category {slug!r}; known: {", ".join(CATEGORIES)}')
+    total = 0
+    for folder in folders:
+        prefix = folder.strip('/') + '/'
+        rows = db.execute('SELECT id FROM books WHERE substr(path, 1, ?) = ?',
+                          (len(prefix), prefix)).fetchall()
+        if not rows:
+            raise SystemExit(f'no book under {folder!r}')
+        for (bid,) in rows:
+            db.execute('UPDATE books SET categories=? WHERE id=?', (json.dumps([slug]), bid))
+            db.execute('UPDATE books_fts SET categories=? WHERE id=?', (slug, bid))
+        total += len(rows)
+    db.commit()
+    return total
+
+
 def clean_sites(db):
     """Strips download-site addresses (page footers) from the indexed text."""
     rows = db.execute('SELECT rowid, content FROM books_fts').fetchall()
@@ -562,6 +586,8 @@ def main():
                     help='only strip download-site addresses from the indexed text')
     ap.add_argument('--fix-categories', action='store_true',
                     help='only put the fiction categories right (from the tags, without AI)')
+    ap.add_argument('--category', nargs='+', metavar=('SLUG', 'FOLDER'),
+                    help='only set category SLUG on every book under the FOLDERs (relative to DIR)')
     a = ap.parse_args()
 
     root = os.path.realpath(a.dir)
@@ -575,6 +601,12 @@ def main():
         return
     if a.fix_categories:
         print(f'Fiction categories put right on {fix_categories(db)} books.')
+        return
+    if a.category:
+        if len(a.category) < 2:
+            raise SystemExit('--category needs a slug and at least one folder')
+        n = set_category(db, a.category[0], a.category[1:])
+        print(f'Category {a.category[0]} set on {n} books.')
         return
 
     files = book_files(root)

@@ -66,6 +66,26 @@ class UnchangedTest(unittest.TestCase):
             self.assertFalse(bc.unchanged(None, st, root))
 
 
+class SetCategoryTest(unittest.TestCase):
+    def test_every_book_under_the_folder_and_nothing_else(self):
+        import json
+        import sqlite3
+        db = sqlite3.connect(':memory:')
+        db.executescript(bc.SCHEMA)
+        for bid, path in (('a', 'Mag/1995/x.pdf'), ('b', 'Mag/y.pdf'), ('c', 'Magazine/z.pdf'), ('d', 'w.pdf')):
+            db.execute("INSERT INTO books(id, path, categories) VALUES(?, ?, '[\"other\"]')", (bid, path))
+            db.execute("INSERT INTO books_fts(id, categories) VALUES(?, 'other')", (bid,))
+        self.assertEqual(bc.set_category(db, 'diy-home', ['Mag/']), 2)
+        cats = dict(db.execute('SELECT id, categories FROM books'))
+        self.assertEqual({k: json.loads(v) for k, v in cats.items()},
+                         {'a': ['diy-home'], 'b': ['diy-home'], 'c': ['other'], 'd': ['other']})
+        self.assertEqual(db.execute("SELECT categories FROM books_fts WHERE id='a'").fetchone()[0], 'diy-home')
+        with self.assertRaises(SystemExit):
+            bc.set_category(db, 'no-such', ['Mag'])
+        with self.assertRaises(SystemExit):
+            bc.set_category(db, 'diy-home', ['Typo'])
+
+
 class HelpersTest(unittest.TestCase):
     def test_split_authors(self):
         self.assertEqual(bc.split_authors('A. Smith; B. Jones'), ['A. Smith', 'B. Jones'])
