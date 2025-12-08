@@ -106,6 +106,29 @@ class LanguageCategoriesTest(unittest.TestCase):
         self.assertEqual(lc(['python', 'data-ai'], ['pandas']), ['python', 'data-ai'])
 
 
+class CleanCategoriesTest(unittest.TestCase):
+    def test_wrong_language_other_and_language_learning(self):
+        cc = bc.clean_categories
+        # A wrong language gives way to the named one, or goes when that has no category.
+        self.assertEqual(cc(['python', 'web-backend'], ['java', 'streams'], 'Java 8 to 21'),
+                         ['java-kotlin', 'web-backend'])
+        self.assertEqual(cc(['frontend', 'python'], ['dom', 'es6'], 'JavaScript Cookbook'), ['frontend'])
+        self.assertEqual(cc(['go-rust', 'c-cpp'], ['ownership'], 'Programming Rust'), ['go-rust'])
+        self.assertEqual(cc(['csharp-dotnet'], ['migration'], 'Переход на VB .NET'), ['csharp-dotnet'])
+        self.assertEqual(cc(['python', 'c-cpp'], ['cpython', 'c'], 'CPython Internals'), ['python', 'c-cpp'])
+        # Naming no language keeps it (an ML book that uses Python without saying so).
+        self.assertEqual(cc(['data-ai', 'python'], ['keras'], 'AI for Coders'), ['data-ai', 'python'])
+        # "Programming language" is not a human language.
+        self.assertEqual(cc(['python', 'languages-learning'], ['exercises'], 'Язык Python'), ['python'])
+        # 'other' only alone; woodworking under 'other' is DIY.
+        self.assertEqual(cc(['other', 'languages-learning'], ['english'], 'English'), ['languages-learning'])
+        self.assertEqual(cc(['other'], ['woodworking', 'joinery'], 'Joining Wood'), ['diy-home'])
+        self.assertEqual(cc(['other'], ['misc'], 'Something'), ['other'])
+        self.assertEqual(cc(['other'], ['c++', 'boost'], 'C++ для профи'), ['c-cpp'])
+        self.assertEqual(cc(['other'], ['english', 'grammar'], 'Грамматика'), ['languages-learning'])
+        self.assertEqual(cc(['other'], ['medicine'], 'Справочник'), ['other'])
+
+
 class HelpersTest(unittest.TestCase):
     def test_split_authors(self):
         self.assertEqual(bc.split_authors('A. Smith; B. Jones'), ['A. Smith', 'B. Jones'])

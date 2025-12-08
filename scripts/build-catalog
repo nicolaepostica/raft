@@ -118,6 +118,31 @@ LANGUAGE_TAGS = {
     'go': 'go-rust', 'golang': 'go-rust', 'rust': 'go-rust',
     'javascript': 'frontend', 'typescript': 'frontend',
 }
+# Words (tags or title) naming a language that has its own category, or a framework that
+# implies it (Django -> Python, Unity -> C#). Used to tell a wrong language category.
+LANGUAGE_CATEGORIES = {'python', 'java-kotlin', 'csharp-dotnet', 'c-cpp', 'go-rust'}
+LANGUAGE_WORDS = {
+    'python': 'python', 'python3': 'python', 'python-3': 'python', 'cpython': 'python',
+    'django': 'python', 'flask': 'python', 'fastapi': 'python', 'pandas': 'python',
+    'numpy': 'python', 'pytest': 'python', 'jupyter': 'python',
+    'java': 'java-kotlin', 'kotlin': 'java-kotlin', 'spring': 'java-kotlin', 'spring-boot': 'java-kotlin',
+    'c#': 'csharp-dotnet', 'csharp': 'csharp-dotnet', 'c-sharp': 'csharp-dotnet', '.net': 'csharp-dotnet',
+    'dotnet': 'csharp-dotnet', 'asp.net': 'csharp-dotnet', 'unity': 'csharp-dotnet',
+    'c': 'c-cpp', 'c++': 'c-cpp', 'cpp': 'c-cpp', 'ansi-c': 'c-cpp', 'stl': 'c-cpp',
+    'go': 'go-rust', 'golang': 'go-rust', 'rust': 'go-rust',
+}
+# Languages and platforms without a language category of their own, for the same purpose.
+OTHER_LANGUAGE_WORDS = {'javascript', 'typescript', 'dart', 'flutter', 'php', 'node.js', 'nodejs',
+                        'react', 'angular', 'vue', 'html', 'css'}
+# Tags of woodworking and home repair books the AI left under 'other'.
+DIY_TAGS = {'woodworking', 'joinery', 'carpentry', 'home-improvement', 'home-repair', 'renovation',
+            'plumbing', 'power-tools', 'wood-finishing', 'furniture-making', 'diy-home'}
+# Tags that tell the category of a book the AI left under 'other' alone.
+OTHER_TOPIC_TAGS = {
+    'languages-learning': {'english', 'grammar', 'english-grammar', 'vocabulary', 'irregular-verbs'},
+    'design-ux': {'design', 'color', 'colour-theory', 'color-theory', 'typography', 'graphic-design'},
+    'business': {'logistics', 'логистика', 'mba', 'marketing', 'management', 'social-media'},
+}
 # Languages without a category: a book about one keeps 'other-languages' next to others.
 OTHER_LANGUAGE_TAGS = {'swift', 'objective-c', 'ruby', 'perl', 'lua', 'haskell', 'scala', 'clojure',
                        'elixir', 'erlang', 'r', 'julia', 'visual-basic', 'vba', 'vb.net', 'powershell',
@@ -287,6 +312,8 @@ def ask_ai(meta, text, filename, model):
         'Haskell...): never for Java, Kotlin, C, C++, C#, Go, Rust, Python, JavaScript or TypeScript '
         '(use their slugs), never next to the category that already covers the language (Android, '
         'Flutter, Angular), and never for human languages (English textbooks are "languages-learning").\n'
+        '  A language slug (python, java-kotlin, c-cpp...) only when the book teaches or uses THAT language. '
+        '"other" only alone, when nothing else fits.\n'
         '- tags: 2 to 8 short lowercase keywords (technologies, topics) in English.\n'
         '- description: 2-3 sentences in ROMANIAN (with correct diacritics) about what the book covers and for whom.\n\n'
         f'FILE NAME: {filename}\nMETADATA: {json.dumps(meta, ensure_ascii=False)}\n---TEXT---\n{text[:5000]}\n---END---'
@@ -569,14 +596,65 @@ def language_categories(cats, tags):
     return cats
 
 
+def mentioned_languages(tags, title):
+    """The programming languages a book names in its tags or title: their category slugs, and
+    'other-languages' for one without a category."""
+    words = [t.lower() for t in tags]
+    # Title words keep '#' and '+' (C#, C++); a Cyrillic 'С' in 'С++' / 'С#' counts as Latin.
+    words += re.findall(r'[\w#+.]+', (title or '').lower().replace('с++', 'c++').replace('с#', 'c#'))
+    found = set()
+    for w in words:
+        w = w.rstrip('.')
+        if w in LANGUAGE_WORDS:
+            found.add(LANGUAGE_WORDS[w])
+        elif w in OTHER_LANGUAGE_TAGS or w in OTHER_LANGUAGE_WORDS:
+            found.add('other-languages')
+    return found
+
+
+def clean_categories(cats, tags, title):
+    """Drops the categories the AI added without reason (seen in the library):
+    - a language category (Python on a C# or Android book, C++ on a Rust book) when the book
+      names other languages and not this one: replaced by the named language's category when
+      it has one (Java, Go), else dropped (JavaScript, PHP); a book naming none keeps it;
+    - 'languages-learning' next to a programming category (a "programming language" book);
+    - 'other' next to any other category; 'other' on woodworking / home repair -> 'diy-home';
+      'other' alone -> the category of the language or topic its tags name."""
+    tags_l = [t.lower() for t in tags]
+    named = mentioned_languages(tags, title)
+    # A wrong language category gives way to the named language's own category, if it has one.
+    own = sorted(c for c in named if c in LANGUAGE_CATEGORIES and c not in cats)
+    out = []
+    for c in cats:
+        if c in LANGUAGE_CATEGORIES and named and c not in named:
+            if own:
+                out.append(own.pop(0))
+        else:
+            out.append(c)
+    if not out and cats:   # only wrong languages, none named with a category of its own
+        out = ['other-languages'] if 'other-languages' in named else cats
+    if 'languages-learning' in out and any(c in PROGRAMMING or c == 'other-languages' for c in out):
+        out.remove('languages-learning')
+    if 'other' in out and any(t in DIY_TAGS for t in tags_l):
+        out = ['diy-home' if c == 'other' else c for c in out]
+    if out == ['other']:
+        named_own = sorted(c for c in named if c in LANGUAGE_CATEGORIES)
+        topic = next((c for c, words in OTHER_TOPIC_TAGS.items() if any(t in words for t in tags_l)), None)
+        out = named_own[:1] or ([topic] if topic else out)
+    if 'other' in out and len(out) > 1:
+        out.remove('other')
+    return list(dict.fromkeys(out)) or cats
+
+
 def fix_categories(db):
-    """Applies fiction_categories and language_categories to every book; returns how many
-    changed."""
+    """Applies fiction_categories, language_categories and clean_categories to every book;
+    returns how many changed."""
     changed = 0
-    for bid, cats, tags, fmt in db.execute('SELECT id, categories, tags, format FROM books').fetchall():
+    rows = db.execute('SELECT id, categories, tags, format, title FROM books').fetchall()
+    for bid, cats, tags, fmt, title in rows:
         old = json.loads(cats or '[]')
         tags = json.loads(tags or '[]')
-        new = language_categories(fiction_categories(old, tags, fmt), tags)
+        new = clean_categories(language_categories(fiction_categories(old, tags, fmt), tags), tags, title)
         if new != old:
             db.execute('UPDATE books SET categories=? WHERE id=?', (json.dumps(new), bid))
             db.execute('UPDATE books_fts SET categories=? WHERE id=?', (' '.join(new), bid))
@@ -645,7 +723,7 @@ def main():
         print(f'Download-site addresses stripped from the text of {clean_sites(db)} books.')
         return
     if a.fix_categories:
-        print(f'Fiction and language categories put right on {fix_categories(db)} books.')
+        print(f'Categories put right on {fix_categories(db)} books.')
         return
     if a.category:
         if len(a.category) < 2:
@@ -741,7 +819,7 @@ def main():
 
     fixed = fix_categories(db)
     if fixed:
-        print(f'Fiction and language categories put right on {fixed} books.')
+        print(f'Categories put right on {fixed} books.')
     cleaned = clean_sites(db)
     if cleaned:
         print(f'Download-site addresses stripped from the text of {cleaned} books.')
