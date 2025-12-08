@@ -51,6 +51,21 @@ class LocalMetadataTest(unittest.TestCase):
         self.assertEqual(m['tags'], ['fantasy'])
 
 
+class UnchangedTest(unittest.TestCase):
+    def test_a_book_without_a_cover_is_not_redone_but_a_lost_cover_is(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, 'covers'))
+            open(os.path.join(root, 'covers', 'a.webp'), 'wb').close()
+            st = mock.Mock(st_size=10, st_mtime=5.0)
+            self.assertTrue(bc.unchanged(('a', 10, 5.0, None), st, root))
+            self.assertTrue(bc.unchanged(('a', 10, 5.0, 'covers/a.webp'), st, root))
+            self.assertFalse(bc.unchanged(('a', 10, 5.0, 'covers/gone.webp'), st, root))
+            self.assertFalse(bc.unchanged(('a', 11, 5.0, None), st, root))
+            self.assertFalse(bc.unchanged(('a', 10, 6.0, None), st, root))
+            self.assertFalse(bc.unchanged(None, st, root))
+
+
 class HelpersTest(unittest.TestCase):
     def test_split_authors(self):
         self.assertEqual(bc.split_authors('A. Smith; B. Jones'), ['A. Smith', 'B. Jones'])

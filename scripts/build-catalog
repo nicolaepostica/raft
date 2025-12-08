@@ -214,6 +214,17 @@ def make_cover(path, out):
         return False
 
 
+def unchanged(known, st, root):
+    """True when a catalogued file (known = id, size, mtime, cover) needs no work on this run.
+
+    A book without a cover is not redone: its cover already failed (an FB2 with no picture) and
+    would fail again. A cover file that went missing is made again.
+    """
+    if not known or known[1] != st.st_size or known[2] != st.st_mtime:
+        return False
+    return not known[3] or os.path.exists(os.path.join(root, known[3]))
+
+
 def page_count(path):
     ext = os.path.splitext(path)[1].lower()
     if ext == '.pdf':
@@ -575,7 +586,7 @@ def main():
         p = os.path.join(root, f)
         st = os.stat(p)
         k = known.get(f)
-        if k and k[1] == st.st_size and k[2] == st.st_mtime and k[3] and not a.refresh_ai:
+        if not a.refresh_ai and unchanged(k, st, root):
             seen_ids.add(k[0])
             continue
         todo.append((f, st))
