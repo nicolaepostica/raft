@@ -433,6 +433,11 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Поиск по названию, автору, тегу или тексту…  (Ctrl+F)",
     ),
     ("Șterge căutarea", "Clear search", "Очистить поиск"),
+    (
+        "Caută cărțile autorului",
+        "Search the author's books",
+        "Искать книги автора",
+    ),
     ("Relevanță", "Relevance", "Релевантность"),
     ("Titlu", "Title", "Название"),
     (

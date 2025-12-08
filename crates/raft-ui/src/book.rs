@@ -227,7 +227,25 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 crate::theme::reading_sizes(ui.style_mut());
                 ui.heading(book.display_title());
                 if !book.authors.is_empty() {
-                    ui.label(egui::RichText::new(book.authors_line()).size(22.0));
+                    // Each author searches the library: the name lands in the search bar,
+                    // where the "×" clears it.
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let link = ui.visuals().hyperlink_color;
+                        for (i, author) in book.authors.iter().enumerate() {
+                            if i > 0 {
+                                ui.label(egui::RichText::new(", ").size(22.0));
+                            }
+                            if ui
+                                .link(egui::RichText::new(author).size(22.0).color(link))
+                                .on_hover_text(t("Caută cărțile autorului"))
+                                .clicked()
+                            {
+                                app.act("filter.clear", json!({}));
+                                app.act("search.set", json!({ "text": author }));
+                            }
+                        }
+                    });
                 }
                 ui.add_space(8.0);
                 egui::Grid::new("meta")

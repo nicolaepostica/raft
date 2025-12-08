@@ -816,6 +816,80 @@ fn round_x_clears_the_search() {
 }
 
 #[test]
+fn round_x_clears_a_typed_search() {
+    let mut h = harness();
+    h.run();
+    let field = egui::accesskit::Role::TextInput;
+    h.get_by_role(field).click();
+    h.run();
+    h.get_by_role(field).type_text("Rust");
+    h.run();
+    h.run();
+    assert_eq!(h.state().session.query().text, "Rust");
+    h.get_by_label("1 din 2 cărți");
+    // A real pointer click on the "×" (not an accessibility action): it lies inside the
+    // text field, which also takes pointer input.
+    let pos = h.get_by_label("Șterge căutarea").rect().center();
+    h.input_mut().events.push(egui::Event::PointerMoved(pos));
+    h.run();
+    for pressed in [true, false] {
+        h.input_mut().events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+    }
+    for _ in 0..4 {
+        h.run();
+    }
+    assert_eq!(h.state().search, "");
+    assert_eq!(h.state().session.query().text, "");
+    h.get_by_label("2 din 2 cărți");
+}
+
+#[test]
+fn an_author_searches_and_the_x_clears_a_filter_too() {
+    let mut h = harness();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Tim McNamara").click();
+    h.run();
+    h.run();
+    // The author is a search, visible in the bar and cleared by the "×".
+    assert_eq!(h.state().session.route(), &Route::Library);
+    assert_eq!(h.state().session.query().text, "Tim McNamara");
+    assert_eq!(h.state().search, "Tim McNamara");
+    h.get_by_label("1 din 2 cărți");
+    h.get_by_label("Șterge căutarea").click();
+    h.run();
+    h.get_by_label("2 din 2 cărți");
+
+    // A filter alone (a category from a book's page) leaves the bar empty: the "×" stays
+    // and clears the filters.
+    h.state_mut()
+        .run(
+            "filter.category.toggle",
+            serde_json::json!({"slug": "fiction"}),
+        )
+        .unwrap();
+    h.run();
+    h.get_by_label("1 din 2 cărți");
+    assert_eq!(h.state().search, "");
+    // The panel's "Clear filters" button and the "×" in the bar, drawn after it.
+    let clear: Vec<_> = h.get_all_by_label("Șterge filtrele").collect();
+    assert_eq!(clear.len(), 2);
+    clear.last().unwrap().click();
+    h.run();
+    h.get_by_label("2 din 2 cărți");
+    assert!(h.state().session.query().filters.is_empty());
+    assert!(h.query_by_label("Șterge căutarea").is_none());
+}
+
+#[test]
 fn continue_reading_has_its_own_tab() {
     let mut h = harness();
     h.run();

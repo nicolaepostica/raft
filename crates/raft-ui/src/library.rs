@@ -495,9 +495,16 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
         } else if !resp.has_focus() {
             app.search.clone_from(&app.session.query().text);
         }
-        if !app.search.is_empty() && clear_button(ui, resp.rect).clicked() {
-            app.search.clear();
-            app.act("search.set", json!({ "text": "" }));
+        // The "×" resets what the grid shows: the text first, else the filters (a folder or
+        // a category chosen from a book's page leaves the bar empty but the list narrowed).
+        let filtered = !app.session.query().filters.is_empty();
+        if !app.search.is_empty() {
+            if clear_button(ui, resp.rect, t("Șterge căutarea")).clicked() {
+                app.search.clear();
+                app.act("search.set", json!({ "text": "" }));
+            }
+        } else if filtered && clear_button(ui, resp.rect, t("Șterge filtrele")).clicked() {
+            app.act("filter.clear", json!({}));
         }
     });
 }
@@ -506,10 +513,9 @@ fn search_bar(app: &mut RaftUi, ui: &mut egui::Ui) {
 const CLEAR_D: f32 = 18.0;
 
 /// A round "×" button drawn inside the right end of the search field `field`.
-fn clear_button(ui: &mut egui::Ui, field: egui::Rect) -> egui::Response {
+fn clear_button(ui: &mut egui::Ui, field: egui::Rect, label: &str) -> egui::Response {
     let center = egui::pos2(field.right() - 6.0 - CLEAR_D / 2.0, field.center().y);
     let rect = egui::Rect::from_center_size(center, egui::vec2(CLEAR_D, CLEAR_D));
-    let label = t("Șterge căutarea");
     let resp = ui
         .interact(
             rect,
