@@ -86,6 +86,26 @@ class SetCategoryTest(unittest.TestCase):
             bc.set_category(db, 'diy-home', ['Typo'])
 
 
+class LanguageCategoriesTest(unittest.TestCase):
+    def test_other_languages_is_put_right(self):
+        lc = bc.language_categories
+        # Next to the category that covers the language: dropped.
+        self.assertEqual(lc(['mobile', 'other-languages'], ['android', 'java']), ['mobile'])
+        self.assertEqual(lc(['frontend', 'other-languages'], ['angular', 'typescript']), ['frontend'])
+        # English textbooks: natural languages.
+        self.assertEqual(lc(['other-languages', 'languages-learning'], ['english', 'grammar']),
+                         ['languages-learning'])
+        # A language with its own category: replaced.
+        self.assertEqual(lc(['other-languages', 'architecture'], ['kotlin', 'functional-programming']),
+                         ['java-kotlin', 'architecture'])
+        # A language without one keeps it, alone or next to another category.
+        self.assertEqual(lc(['other-languages', 'mobile'], ['swift', 'ios']), ['other-languages', 'mobile'])
+        self.assertEqual(lc(['other-languages', 'c-cpp'], ['visual-basic', 'win32']),
+                         ['other-languages', 'c-cpp'])
+        self.assertEqual(lc(['other-languages'], ['perl', 'xml']), ['other-languages'])
+        self.assertEqual(lc(['python', 'data-ai'], ['pandas']), ['python', 'data-ai'])
+
+
 class HelpersTest(unittest.TestCase):
     def test_split_authors(self):
         self.assertEqual(bc.split_authors('A. Smith; B. Jones'), ['A. Smith', 'B. Jones'])

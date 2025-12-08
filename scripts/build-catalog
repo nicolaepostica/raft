@@ -11,7 +11,7 @@ Usage:
                                      # for a folder added without a catalog.db)
     build-catalog --json             # also export DIR/catalog.json
     build-catalog --clean-only       # only strip download-site addresses from the indexed text
-    build-catalog --fix-categories   # only put the fiction categories right (no AI)
+    build-catalog --fix-categories   # only put the fiction and language categories right (no AI)
     build-catalog --category diy-home "The Family Handyman"
                                      # only set the category of every book under these folders
 
@@ -103,6 +103,27 @@ NONFICTION_TAGS = {'medicine', 'medical', 'medical-reference', 'reference', 'enc
                    'diagnostics', 'diagnosis', 'treatment', 'pharmacology', 'first-aid',
                    'medicina', 'медицина', 'справочник', 'энциклопедия', 'учебник', 'словарь'}
 GENRES = list(GENRE_TAGS)
+
+# 'other-languages' is for a programming language with no category of its own. The AI also put
+# it next to the language's own category (Android + Java, Angular + TypeScript), on Java or C++
+# books, and on English textbooks (natural languages).
+PROGRAMMING = {'python', 'web-backend', 'frontend', 'mobile', 'java-kotlin', 'csharp-dotnet',
+               'c-cpp', 'go-rust', 'odoo'}
+# The language named by a tag -> its own category (exact lowercase tags).
+LANGUAGE_TAGS = {
+    'python': 'python', 'python3': 'python',
+    'java': 'java-kotlin', 'kotlin': 'java-kotlin',
+    'c': 'c-cpp', 'c++': 'c-cpp', 'cpp': 'c-cpp',
+    'c#': 'csharp-dotnet', 'csharp': 'csharp-dotnet', '.net': 'csharp-dotnet', 'dotnet': 'csharp-dotnet',
+    'go': 'go-rust', 'golang': 'go-rust', 'rust': 'go-rust',
+    'javascript': 'frontend', 'typescript': 'frontend',
+}
+# Languages without a category: a book about one keeps 'other-languages' next to others.
+OTHER_LANGUAGE_TAGS = {'swift', 'objective-c', 'ruby', 'perl', 'lua', 'haskell', 'scala', 'clojure',
+                       'elixir', 'erlang', 'r', 'julia', 'visual-basic', 'vba', 'vb.net', 'powershell',
+                       'bash', 'assembly', 'assembler', 'fortran', 'pascal', 'delphi', 'lisp',
+                       'common-lisp', 'scheme', 'f#', 'ocaml', 'groovy', 'matlab', 'solidity', 'zig',
+                       'nim', 'cobol', 'prolog', 'elm', 'crystal', 'd', 'smalltalk', 'tcl', '1c'}
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS books(
@@ -262,6 +283,10 @@ def ask_ai(meta, text, filename, model):
         '  A novel or a story: "fiction" first, then its genres (fantasy, litrpg, sci-fi, alt-history); '
         'never "other" for fiction.\n'
         '  Home repair, renovation, woodworking, gardening or DIY (books and magazines): "diy-home".\n'
+        '  "other-languages" only for a PROGRAMMING language with no slug of its own (Swift, Ruby, Perl, '
+        'Haskell...): never for Java, Kotlin, C, C++, C#, Go, Rust, Python, JavaScript or TypeScript '
+        '(use their slugs), never next to the category that already covers the language (Android, '
+        'Flutter, Angular), and never for human languages (English textbooks are "languages-learning").\n'
         '- tags: 2 to 8 short lowercase keywords (technologies, topics) in English.\n'
         '- description: 2-3 sentences in ROMANIAN (with correct diacritics) about what the book covers and for whom.\n\n'
         f'FILE NAME: {filename}\nMETADATA: {json.dumps(meta, ensure_ascii=False)}\n---TEXT---\n{text[:5000]}\n---END---'
@@ -526,12 +551,32 @@ def fiction_categories(cats, tags, fmt):
     return (['fiction'] + genres)[:3]
 
 
+def language_categories(cats, tags):
+    """Puts 'other-languages' right: dropped next to 'languages-learning' (natural languages)
+    and next to a programming category unless a tag names a language without its own category;
+    replaced by the language's category when a tag names one. Other books are unchanged."""
+    if 'other-languages' not in cats:
+        return cats
+    tags = [t.lower() for t in tags]
+    rest = [c for c in cats if c != 'other-languages']
+    if 'languages-learning' in cats:
+        return rest
+    if any(c in PROGRAMMING for c in rest):
+        return cats if any(t in OTHER_LANGUAGE_TAGS for t in tags) else rest
+    own = next((LANGUAGE_TAGS[t] for t in tags if t in LANGUAGE_TAGS), None)
+    if own and not any(t in OTHER_LANGUAGE_TAGS for t in tags):
+        return [own if c == 'other-languages' else c for c in cats]
+    return cats
+
+
 def fix_categories(db):
-    """Applies fiction_categories to every book; returns how many changed."""
+    """Applies fiction_categories and language_categories to every book; returns how many
+    changed."""
     changed = 0
     for bid, cats, tags, fmt in db.execute('SELECT id, categories, tags, format FROM books').fetchall():
         old = json.loads(cats or '[]')
-        new = fiction_categories(old, json.loads(tags or '[]'), fmt)
+        tags = json.loads(tags or '[]')
+        new = language_categories(fiction_categories(old, tags, fmt), tags)
         if new != old:
             db.execute('UPDATE books SET categories=? WHERE id=?', (json.dumps(new), bid))
             db.execute('UPDATE books_fts SET categories=? WHERE id=?', (' '.join(new), bid))
@@ -585,7 +630,7 @@ def main():
     ap.add_argument('--clean-only', action='store_true',
                     help='only strip download-site addresses from the indexed text')
     ap.add_argument('--fix-categories', action='store_true',
-                    help='only put the fiction categories right (from the tags, without AI)')
+                    help='only put the fiction and language categories right (from the tags, without AI)')
     ap.add_argument('--category', nargs='+', metavar=('SLUG', 'FOLDER'),
                     help='only set category SLUG on every book under the FOLDERs (relative to DIR)')
     a = ap.parse_args()
@@ -600,7 +645,7 @@ def main():
         print(f'Download-site addresses stripped from the text of {clean_sites(db)} books.')
         return
     if a.fix_categories:
-        print(f'Fiction categories put right on {fix_categories(db)} books.')
+        print(f'Fiction and language categories put right on {fix_categories(db)} books.')
         return
     if a.category:
         if len(a.category) < 2:
@@ -696,7 +741,7 @@ def main():
 
     fixed = fix_categories(db)
     if fixed:
-        print(f'Fiction categories put right on {fixed} books.')
+        print(f'Fiction and language categories put right on {fixed} books.')
     cleaned = clean_sites(db)
     if cleaned:
         print(f'Download-site addresses stripped from the text of {cleaned} books.')
