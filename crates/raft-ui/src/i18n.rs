@@ -179,6 +179,16 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Другие папки ({0})",
     ),
     (
+        "Alte limbi ({0})",
+        "Other languages ({0})",
+        "Другие языки ({0})",
+    ),
+    (
+        "Alte formate ({0})",
+        "Other formats ({0})",
+        "Другие форматы ({0})",
+    ),
+    (
         "Alte categorii ({0})",
         "Other categories ({0})",
         "Другие категории ({0})",

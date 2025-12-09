@@ -889,6 +889,27 @@ fn an_author_searches_and_the_x_clears_a_filter_too() {
     h.get_by_label("Alte categorii (1)");
     assert!(h.query_by_label_contains("Beletristică").is_some());
     assert!(h.query_by_label_contains("Go, Rust").is_some());
+    // Language and format: the same (each alone: the other's filter narrows its counts).
+    assert!(h.query_by_label("Alte limbi (1)").is_none());
+    for (cmd, params, others) in [
+        (
+            "filter.language.toggle",
+            serde_json::json!({"language": "ru"}),
+            "Alte limbi (1)",
+        ),
+        (
+            "filter.format.toggle",
+            serde_json::json!({"format": "fb2"}),
+            "Alte formate (1)",
+        ),
+    ] {
+        h.state_mut()
+            .run("filter.clear", serde_json::json!({}))
+            .unwrap();
+        h.state_mut().run(cmd, params).unwrap();
+        h.run();
+        h.get_by_label(others);
+    }
     // The panel's "Clear filters" button and the "×" in the bar, drawn after it.
     let clear: Vec<_> = h.get_all_by_label("Șterge filtrele").collect();
     assert_eq!(clear.len(), 2);

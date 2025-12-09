@@ -53,25 +53,39 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         ui.add_space(6.0);
 
         ui.strong(t("Limbă"));
-        for (lang, n) in &facets.languages {
-            let mut on = filters.languages.contains(lang);
-            if ui
-                .checkbox(&mut on, format!("{}  ({n})", language_name(lang)))
-                .changed()
-            {
-                app.act("filter.language.toggle", json!({ "language": lang }));
-            }
-        }
+        let others = |n: usize, checked: bool| checked.then(|| tf("Alte limbi ({0})", &[&n]));
+        checked_above(
+            ui,
+            &facets.languages,
+            &filters.languages,
+            usize::MAX,
+            ("other-languages-list", true, others),
+            |ui, lang, n, mut on| {
+                if ui
+                    .checkbox(&mut on, format!("{}  ({n})", language_name(lang)))
+                    .changed()
+                {
+                    app.act("filter.language.toggle", json!({ "language": lang }));
+                }
+            },
+        );
         ui.add_space(6.0);
 
         ui.strong(t("Format"));
-        for (format, n) in &facets.formats {
-            let mut on = filters.formats.contains(format);
-            let label = format!("{}  ({n})", format.slug().to_uppercase());
-            if ui.checkbox(&mut on, label).changed() {
-                app.act("filter.format.toggle", json!({ "format": format.slug() }));
-            }
-        }
+        let others = |n: usize, checked: bool| checked.then(|| tf("Alte formate ({0})", &[&n]));
+        checked_above(
+            ui,
+            &facets.formats,
+            &filters.formats,
+            usize::MAX,
+            ("other-formats", true, others),
+            |ui, format, n, mut on| {
+                let label = format!("{}  ({n})", format.slug().to_uppercase());
+                if ui.checkbox(&mut on, label).changed() {
+                    app.act("filter.format.toggle", json!({ "format": format.slug() }));
+                }
+            },
+        );
         ui.add_space(6.0);
 
         ui.strong(t("Ani"));
@@ -130,43 +144,70 @@ fn categories(
     facets: &raft_engine::Facets,
     filters: &raft_doc::Filters,
 ) {
-    let cats = selected_first(&facets.categories, &filters.categories, TOP_CATEGORIES);
-    let (checked, rest) = cats.split_at(filters.categories.len().min(cats.len()));
-    let mut toggle = |ui: &mut egui::Ui, slug: &String, n: usize, on: bool| {
-        let mut on = on;
-        let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
-        if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
-            app.act("filter.category.toggle", json!({ "slug": slug }));
-        }
-    };
-    for (slug, n) in checked {
-        toggle(ui, slug, *n, true);
+    let others = |n: usize, checked: bool| checked.then(|| tf("Alte categorii ({0})", &[&n]));
+    checked_above(
+        ui,
+        &facets.categories,
+        &filters.categories,
+        TOP_CATEGORIES,
+        ("other-categories", true, others),
+        |ui, slug, n, mut on| {
+            let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
+            if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
+                app.act("filter.category.toggle", json!({ "slug": slug }));
+            }
+        },
+    );
+}
+
+/// A facet section: the checked entries in sight (see `selected_first`), the others below
+/// them in a collapsible list titled `title(count, anything checked)`, or as a plain list
+/// when that gives `None`. `list` = (egui id of the collapsible list, open at first, title).
+fn checked_above<T: Clone + Ord>(
+    ui: &mut egui::Ui,
+    items: &[(T, usize)],
+    selected: &std::collections::BTreeSet<T>,
+    top: usize,
+    list: (&str, bool, impl Fn(usize, bool) -> Option<String>),
+    mut row: impl FnMut(&mut egui::Ui, &T, usize, bool),
+) {
+    let (id, open, title) = list;
+    let all = selected_first(items, selected, top);
+    let (checked, rest) = all.split_at(selected.len().min(all.len()));
+    for (k, n) in checked {
+        row(ui, k, *n, true);
     }
-    if checked.is_empty() {
-        for (slug, n) in rest {
-            toggle(ui, slug, *n, false);
+    if rest.is_empty() {
+        return;
+    }
+    match title(rest.len(), !checked.is_empty()) {
+        Some(title) => {
+            egui::CollapsingHeader::new(title)
+                .id_salt(id)
+                .default_open(open)
+                .show(ui, |ui| {
+                    for (k, n) in rest {
+                        row(ui, k, *n, false);
+                    }
+                });
         }
-    } else if !rest.is_empty() {
-        egui::CollapsingHeader::new(tf("Alte categorii ({0})", &[&rest.len()]))
-            .id_salt("other-categories")
-            .default_open(true)
-            .show(ui, |ui| {
-                for (slug, n) in rest {
-                    toggle(ui, slug, *n, false);
-                }
-            });
+        _ => {
+            for (k, n) in rest {
+                row(ui, k, *n, false);
+            }
+        }
     }
 }
 
 /// A facet list with the checked entries first (in the facet's order), so they need no
 /// searching for: then up to `top` of the others. A checked entry the facet no longer
 /// counts is listed with 0, so it can still be unchecked.
-fn selected_first(
-    items: &[(String, usize)],
-    selected: &std::collections::BTreeSet<String>,
+fn selected_first<T: Clone + Ord>(
+    items: &[(T, usize)],
+    selected: &std::collections::BTreeSet<T>,
     top: usize,
-) -> Vec<(String, usize)> {
-    let mut out: Vec<(String, usize)> = items
+) -> Vec<(T, usize)> {
+    let mut out: Vec<(T, usize)> = items
         .iter()
         .filter(|(k, _)| selected.contains(k))
         .cloned()
@@ -199,41 +240,35 @@ fn folders(
     }
     ui.add_space(6.0);
     // The checked folders stay in sight, above the list they were picked from (which can
-    // hold a hundred series); a checked folder the facet no longer counts shows with 0.
-    let dirs = selected_first(&facets.folders, &filters.folders, usize::MAX);
-    let (checked, rest) = dirs.split_at(filters.folders.len().min(dirs.len()));
-    let mut toggle = |ui: &mut egui::Ui, dir: &String, n: usize, on: bool| {
-        let mut on = on;
-        let label = format!("{}  ({n})", app.session.folder_label(dir));
-        if ui
-            .checkbox(&mut on, label)
-            .on_hover_text(dir.as_str())
-            .changed()
-        {
-            app.act("filter.folder.toggle", json!({ "path": dir }));
-        }
-    };
-    if !checked.is_empty() {
+    // hold a hundred series, so it starts closed); a checked folder the facet no longer
+    // counts shows with 0.
+    if !filters.folders.is_empty() {
         ui.strong(t("Foldere"));
-        for (dir, n) in checked {
-            toggle(ui, dir, *n, true);
-        }
     }
-    if rest.is_empty() {
-        return;
-    }
-    let title = if checked.is_empty() {
-        tf("Foldere ({0})", &[&rest.len()])
-    } else {
-        tf("Alte foldere ({0})", &[&rest.len()])
+    let title = |n: usize, checked: bool| {
+        Some(if checked {
+            tf("Alte foldere ({0})", &[&n])
+        } else {
+            tf("Foldere ({0})", &[&n])
+        })
     };
-    egui::CollapsingHeader::new(title)
-        .id_salt("folders")
-        .show(ui, |ui| {
-            for (dir, n) in rest {
-                toggle(ui, dir, *n, false);
+    checked_above(
+        ui,
+        &facets.folders,
+        &filters.folders,
+        usize::MAX,
+        ("folders", false, title),
+        |ui, dir, n, mut on| {
+            let label = format!("{}  ({n})", app.session.folder_label(dir));
+            if ui
+                .checkbox(&mut on, label)
+                .on_hover_text(dir.as_str())
+                .changed()
+            {
+                app.act("filter.folder.toggle", json!({ "path": dir }));
             }
-        });
+        },
+    );
 }
 
 /// A slider with two handles over `lo..=hi`; returns true when a handle moved.
