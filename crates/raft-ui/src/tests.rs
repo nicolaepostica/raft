@@ -885,6 +885,10 @@ fn an_author_searches_and_the_x_clears_a_filter_too() {
     h.run();
     h.get_by_label("1 din 2 cărți");
     assert_eq!(h.state().search, "");
+    // The checked category above, the others in a list of their own, open at first.
+    h.get_by_label("Alte categorii (1)");
+    assert!(h.query_by_label_contains("Beletristică").is_some());
+    assert!(h.query_by_label_contains("Go, Rust").is_some());
     // The panel's "Clear filters" button and the "×" in the bar, drawn after it.
     let clear: Vec<_> = h.get_all_by_label("Șterge filtrele").collect();
     assert_eq!(clear.len(), 2);

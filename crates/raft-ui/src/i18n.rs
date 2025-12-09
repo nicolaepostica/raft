@@ -179,6 +179,11 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Другие папки ({0})",
     ),
     (
+        "Alte categorii ({0})",
+        "Other categories ({0})",
+        "Другие категории ({0})",
+    ),
+    (
         "Arată cărțile din folder",
         "Show the books in the folder",
         "Показать книги из папки",

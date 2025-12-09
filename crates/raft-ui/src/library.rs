@@ -116,19 +116,46 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         {
             app.act("filter.primary_only", json!({ "on": primary }));
         }
-        let cats = selected_first(&facets.categories, &filters.categories, TOP_CATEGORIES);
-        for (i, (slug, n)) in cats.iter().enumerate() {
-            if i == filters.categories.len() && i > 0 {
-                ui.separator();
-            }
-            let mut on = filters.categories.contains(slug);
-            let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
-            if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
-                app.act("filter.category.toggle", json!({ "slug": slug }));
-            }
-        }
+        categories(app, ui, &facets, &filters);
         folders(app, ui, &facets, &filters);
     });
+}
+
+/// The categories: the checked ones in sight under the heading, the others below them,
+/// in a list of their own once something is checked ("Alte categorii (N)", open at first,
+/// closed at will).
+fn categories(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    facets: &raft_engine::Facets,
+    filters: &raft_doc::Filters,
+) {
+    let cats = selected_first(&facets.categories, &filters.categories, TOP_CATEGORIES);
+    let (checked, rest) = cats.split_at(filters.categories.len().min(cats.len()));
+    let mut toggle = |ui: &mut egui::Ui, slug: &String, n: usize, on: bool| {
+        let mut on = on;
+        let name = crate::i18n::t_dyn(app.session.catalog().category_name(slug));
+        if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
+            app.act("filter.category.toggle", json!({ "slug": slug }));
+        }
+    };
+    for (slug, n) in checked {
+        toggle(ui, slug, *n, true);
+    }
+    if checked.is_empty() {
+        for (slug, n) in rest {
+            toggle(ui, slug, *n, false);
+        }
+    } else if !rest.is_empty() {
+        egui::CollapsingHeader::new(tf("Alte categorii ({0})", &[&rest.len()]))
+            .id_salt("other-categories")
+            .default_open(true)
+            .show(ui, |ui| {
+                for (slug, n) in rest {
+                    toggle(ui, slug, *n, false);
+                }
+            });
+    }
 }
 
 /// A facet list with the checked entries first (in the facet's order), so they need no
