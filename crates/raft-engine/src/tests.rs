@@ -827,6 +827,53 @@ fn library_folders_are_disabled_renamed_and_moved() {
 }
 
 #[test]
+fn series_filter_and_hand_corrections() {
+    let mut books = catalog();
+    for (b, volume) in books.books.iter_mut().zip([2, 1]) {
+        b.series = Some("Бард".into());
+        b.series_index = Some(volume);
+    }
+    let first = books.books.first().map(|b| b.id.clone()).unwrap();
+    let mut s = Session::new(books, vec![], Box::new(Recorder::default()));
+    assert!(
+        s.run("filter.series.toggle", &json!({"series": "Нет"}))
+            .is_err()
+    );
+    s.run("filter.series.toggle", &json!({"series": "Бард"}))
+        .unwrap();
+    assert_eq!(s.facets().series, vec![("Бард".to_owned(), 2)]);
+    // Volume 1 first.
+    assert_ne!(
+        s.results().next().map(|b| b.id.clone()),
+        Some(first.clone())
+    );
+    let second = s.results().next().map(|b| b.id.clone()).unwrap();
+    assert_eq!(
+        s.next_volume(&second).map(|b| b.id.clone()),
+        Some(first.clone())
+    );
+    assert!(s.next_volume(&first).is_none());
+    // Series and volume can be corrected by hand; a bad volume is refused.
+    s.run(
+        "book.edit",
+        &json!({"id": first, "fields": {"series": "Бард II", "series_index": "7"}}),
+    )
+    .unwrap();
+    let b = s.book(&first).unwrap();
+    assert_eq!(
+        (b.series.as_deref(), b.series_index),
+        (Some("Бард II"), Some(7))
+    );
+    assert!(
+        s.run(
+            "book.edit",
+            &json!({"id": first, "fields": {"series_index": 10_000}})
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn subfolders_filter_and_follow_their_library_folder() {
     let r = Recorder::default();
     let mut books = catalog();

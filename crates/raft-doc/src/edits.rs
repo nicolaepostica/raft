@@ -27,6 +27,10 @@ pub enum Field {
     Reviewed,
     /// Not metadata: "not a duplicate of the books it resembles" ("1" or absent).
     NotDuplicate,
+    /// The series (text); not in `ALL`: most books have none, so it is never "missing".
+    Series,
+    /// The volume in the series (digits or "").
+    SeriesIndex,
 }
 
 impl Field {
@@ -65,6 +69,8 @@ impl Field {
             Self::Description => "description",
             Self::Reviewed => "reviewed",
             Self::NotDuplicate => "not_duplicate",
+            Self::Series => "series",
+            Self::SeriesIndex => "series_index",
         }
     }
 
@@ -76,7 +82,12 @@ impl Field {
     pub fn from_slug(s: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
-            .chain([Self::Reviewed, Self::NotDuplicate])
+            .chain([
+                Self::Series,
+                Self::SeriesIndex,
+                Self::Reviewed,
+                Self::NotDuplicate,
+            ])
             .find(|f| f.slug() == s)
     }
 
@@ -113,6 +124,8 @@ pub fn field_value(book: &Book, field: Field) -> String {
         Field::Description => book.description.clone(),
         Field::Reviewed => if book.reviewed { "1" } else { "" }.to_owned(),
         Field::NotDuplicate => if book.not_duplicate { "1" } else { "" }.to_owned(),
+        Field::Series => book.series.clone().unwrap_or_default(),
+        Field::SeriesIndex => book.series_index.map(|n| n.to_string()).unwrap_or_default(),
     }
 }
 
@@ -161,6 +174,16 @@ pub fn apply(book: &mut Book, field: Field, value: &str) {
         Field::Description => book.description = text(),
         Field::Reviewed => book.reviewed = value.trim() == "1",
         Field::NotDuplicate => book.not_duplicate = value.trim() == "1",
+        Field::Series => book.series = crate::sanitize::series_name(value),
+        Field::SeriesIndex => {
+            if value.trim().is_empty() {
+                book.series_index = None;
+            } else if let Ok(n) = value.trim().parse::<u32>()
+                && n <= crate::sanitize::MAX_SERIES_INDEX
+            {
+                book.series_index = Some(n);
+            }
+        }
     }
 }
 

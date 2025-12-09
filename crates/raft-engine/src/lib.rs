@@ -756,6 +756,20 @@ impl Session {
             .collect()
     }
 
+    /// The next volume of `id`'s series: the lowest volume number above its own.
+    pub fn next_volume(&self, id: &str) -> Option<&Book> {
+        let book = self.book(id)?;
+        let (series, index) = (book.series.as_ref()?, book.series_index?);
+        self.catalog
+            .books
+            .iter()
+            .filter(|b| b.series.as_ref() == Some(series))
+            .filter_map(|b| Some((b.series_index?, b)))
+            .filter(|(n, _)| *n > index)
+            .min_by_key(|(n, b)| (*n, b.title.clone()))
+            .map(|(_, b)| b)
+    }
+
     /// The book of the current route (book page or reader).
     pub fn current_book(&self) -> Option<&Book> {
         match &self.state.route {

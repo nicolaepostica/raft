@@ -167,6 +167,12 @@ pub struct Book {
     /// Marked by hand as not a duplicate of the books it resembles.
     #[serde(default)]
     pub not_duplicate: bool,
+    /// The series the book belongs to (one name per series, see `build-catalog`).
+    #[serde(default)]
+    pub series: Option<String>,
+    /// Its volume in the series.
+    #[serde(default)]
+    pub series_index: Option<u32>,
 }
 
 impl Book {
@@ -373,6 +379,9 @@ pub struct Filters {
     /// Books in any of these subfolders (full paths, see `Book::folder`).
     #[serde(default)]
     pub folders: BTreeSet<String>,
+    /// Books of any of these series (`Book::series`).
+    #[serde(default)]
+    pub series: BTreeSet<String>,
 }
 
 impl Filters {
@@ -381,6 +390,7 @@ impl Filters {
             && self.missing.is_empty()
             && self.sources.is_empty()
             && self.folders.is_empty()
+            && self.series.is_empty()
             && self.categories.is_empty()
             && self.languages.is_empty()
             && self.formats.is_empty()

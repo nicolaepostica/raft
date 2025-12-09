@@ -131,6 +131,7 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
             app.act("filter.primary_only", json!({ "on": primary }));
         }
         categories(app, ui, &facets, &filters);
+        series(app, ui, &facets, &filters);
         folders(app, ui, &facets, &filters);
     });
 }
@@ -225,6 +226,42 @@ fn selected_first<T: Clone + Ord>(
             .cloned(),
     );
     out
+}
+
+/// The "Series" section: like the folders, a list that starts closed (a hundred-odd
+/// series), the checked ones above it.
+fn series(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    facets: &raft_engine::Facets,
+    filters: &raft_doc::Filters,
+) {
+    if facets.series.is_empty() && filters.series.is_empty() {
+        return;
+    }
+    ui.add_space(6.0);
+    if !filters.series.is_empty() {
+        ui.strong(t("Serii"));
+    }
+    let title = |n: usize, checked: bool| {
+        Some(if checked {
+            tf("Alte serii ({0})", &[&n])
+        } else {
+            tf("Serii ({0})", &[&n])
+        })
+    };
+    checked_above(
+        ui,
+        &facets.series,
+        &filters.series,
+        usize::MAX,
+        ("series", false, title),
+        |ui, name, n, mut on| {
+            if ui.checkbox(&mut on, format!("{name}  ({n})")).changed() {
+                app.act("filter.series.toggle", json!({ "series": name }));
+            }
+        },
+    );
 }
 
 /// The "Folders" section: the subfolders of the library folders (one per author or
@@ -705,12 +742,12 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
         (None, None) => String::new(),
     };
     child.add(egui::Label::new(egui::RichText::new(meta).small().weak()).truncate());
-    if book.format != Format::Pdf {
-        child.label(
-            egui::RichText::new(book.format.slug().to_uppercase())
-                .small()
-                .weak(),
-        );
+    // The format (when not PDF) and the volume of a series: "FB2 · #3".
+    let format = (book.format != Format::Pdf).then(|| book.format.slug().to_uppercase());
+    let volume = book.series_index.map(|n| format!("#{n}"));
+    let line: Vec<String> = format.into_iter().chain(volume).collect();
+    if !line.is_empty() {
+        child.label(egui::RichText::new(line.join(" · ")).small().weak());
     }
     if resp.hovered() {
         painter.rect_stroke(

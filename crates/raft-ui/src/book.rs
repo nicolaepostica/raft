@@ -280,6 +280,30 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                             t("Mărime"),
                             format!("{:.1} MB", book.size as f64 / 1_048_576.0),
                         );
+                        if let Some(name) = book.series.clone() {
+                            ui.label(egui::RichText::new(t("Serie")).weak());
+                            let text = match book.series_index {
+                                Some(n) => format!("{name} #{n}"),
+                                None => name.clone(),
+                            };
+                            if ui
+                                .link(text)
+                                .on_hover_text(t("Arată toate volumele seriei"))
+                                .clicked()
+                            {
+                                app.act("filter.clear", json!({}));
+                                app.act("filter.series.toggle", json!({ "series": name }));
+                                app.act("view.library", json!({}));
+                            }
+                            ui.end_row();
+                            if let Some(next) = app.session.next_volume(&book.id).cloned() {
+                                ui.label(egui::RichText::new(t("Volumul următor")).weak());
+                                if ui.link(next.display_title()).clicked() {
+                                    app.act("view.book", json!({ "id": next.id }));
+                                }
+                                ui.end_row();
+                            }
+                        }
                         if let Some(dir) = book.folder() {
                             ui.label(egui::RichText::new(t("Folder")).weak());
                             if ui

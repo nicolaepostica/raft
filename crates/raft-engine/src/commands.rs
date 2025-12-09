@@ -285,6 +285,10 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("filter.folder.toggle", "Filtru: folder", toggle_folder)
     },
     CommandSpec {
+        params: r#"{"series": string}"#,
+        ..spec("filter.series.toggle", "Filtru: serie", toggle_series)
+    },
+    CommandSpec {
         menu: Some("View/Back"),
         shortcut: key("Backspace"),
         also: &[
@@ -872,6 +876,24 @@ fn toggle_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     Ok(Value::Null)
 }
 
+fn toggle_series(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let name = str(p, "series")?;
+    if name.len() > raft_doc::sanitize::MAX_SERIES {
+        return Err(bad("`series` is too long"));
+    }
+    let name = name.to_owned();
+    let known = s
+        .catalog
+        .books
+        .iter()
+        .any(|b| b.series.as_ref() == Some(&name));
+    if !known && !s.state.query.filters.series.contains(&name) {
+        return Err(EngineError::NotFound(format!("series `{name}`")));
+    }
+    toggle(&mut s.state.query.filters.series, name);
+    Ok(Value::Null)
+}
+
 /// Interface languages the UI has translations for.
 pub const LANGUAGES: [&str; 3] = ["ro", "en", "ru"];
 
@@ -1202,6 +1224,25 @@ fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError
             Ok(t)
         }
         Field::Publisher | Field::Isbn => text(MAX_SHORT),
+        Field::Series => text(raft_doc::sanitize::MAX_SERIES),
+        Field::SeriesIndex => {
+            let n = match v {
+                Value::Null => return Ok(String::new()),
+                Value::String(t) if t.trim().is_empty() => return Ok(String::new()),
+                Value::String(t) => t
+                    .trim()
+                    .parse::<i64>()
+                    .map_err(|_| bad("`series_index` must be a number"))?,
+                Value::Number(n) => n
+                    .as_i64()
+                    .ok_or_else(|| bad("`series_index` must be a whole number"))?,
+                _ => return Err(bad("`series_index` must be a number")),
+            };
+            if !(0..=i64::from(raft_doc::sanitize::MAX_SERIES_INDEX)).contains(&n) {
+                return Err(bad("`series_index` must be between 0 and 9999"));
+            }
+            Ok(n.to_string())
+        }
         Field::Description => text(edits::MAX_VALUE),
         Field::Language => {
             let t = text(8)?.to_lowercase();

@@ -62,6 +62,9 @@ struct RawBook {
     description: Option<String>,
     cover: Option<String>,
     added_at: Option<String>,
+    // Loose, like the numbers: a wrongly typed series must not drop the book.
+    series: Option<serde_json::Value>,
+    series_index: Option<serde_json::Value>,
 }
 
 /// Parses catalog JSON bytes.
@@ -122,6 +125,15 @@ fn book_from_raw(raw: RawBook) -> Option<Book> {
         description: raw.description,
         cover: raw.cover,
         added_at: raw.added_at,
+        series: raw
+            .series
+            .as_ref()
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        series_index: raw
+            .series_index
+            .as_ref()
+            .and_then(serde_json::Value::as_i64),
     })
 }
 

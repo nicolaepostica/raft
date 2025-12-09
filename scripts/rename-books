@@ -13,7 +13,7 @@ FB2/EPUB series metadata, the AI, or "Том 3" / "Книга 2" / "Vol. 4" / "#
 Files you don't want touched go into DIR/.rename_ignore (one name per line).
 Every operation is appended to DIR/.rename_log.tsv.
 """
-import argparse, concurrent.futures, collections, datetime, hashlib, json, os, re, shutil, subprocess, sys, zipfile
+import argparse, concurrent.futures, html, collections, datetime, hashlib, json, os, re, shutil, subprocess, sys, zipfile
 
 EXTS = {'.pdf', '.epub', '.fb2', '.djvu'}
 DONE_RE = re.compile(r'_(19|20)\d\d(_\d+)?\.[A-Za-z0-9]+$')
@@ -82,6 +82,11 @@ def extract(path):
                  or re.search(r'<meta[^>]*property="group-position"[^>]*>([^<]+)<', t))
             if m:
                 meta['SeriesNumber'] = m.group(1).strip()
+            m = (re.search(r'name="calibre:series"\s+content="([^"]+)"', t)
+                 or re.search(r'content="([^"]+)"\s+name="calibre:series"', t)
+                 or re.search(r'<meta[^>]*property="belongs-to-collection"[^>]*>([^<]+)<', t))
+            if m:
+                meta['Series'] = html.unescape(m.group(1)).strip()
             text = t[:4000]
             for n in z.namelist()[:15]:
                 if re.search(r'\.x?html?$', n):
@@ -91,10 +96,15 @@ def extract(path):
     elif ext == '.fb2':
         t = open(path, encoding='utf8', errors='ignore').read(200000)
         meta['Title'] = (re.findall(r'<book-title>([^<]*)', t) or [''])[0]
-        # <sequence name="Темный Лекарь" number="1"/> in <title-info>
-        m = re.search(r'<sequence\b[^>]*\bnumber="([^"]+)"', t)
-        if m:
-            meta['SeriesNumber'] = m.group(1).strip()
+        # <sequence name="Темный Лекарь" number="1"/> in <title-info> (the first one is the
+        # outer series; <publish-info> may name the publisher's series, not the book's).
+        info = re.search(r'<title-info>(.*?)</title-info>', t, re.S)
+        seq = re.search(r'<sequence\b([^>]*)>', info.group(1) if info else t)
+        attrs = dict(re.findall(r'(\w+)="([^"]*)"', seq.group(1))) if seq else {}
+        if attrs.get('number', '').strip():
+            meta['SeriesNumber'] = attrs['number'].strip()
+        if attrs.get('name', '').strip():
+            meta['Series'] = html.unescape(attrs['name']).strip()
         meta['Date'] = ' '.join(re.findall(r'<(?:date|year)[^>]*>([^<]*)', t))
         text = re.sub(r'<[^>]+>', ' ', t[:20000])
     elif ext == '.djvu':

@@ -42,11 +42,21 @@ impl CatalogDb {
 
     /// Loads every book and category.
     pub fn load(&self) -> Result<Catalog, StoreError> {
-        let mut stmt = self.conn.prepare(
+        // A catalog made before the series columns has none: read NULLs instead.
+        let has_series = self
+            .conn
+            .prepare("SELECT 1 FROM pragma_table_info('books') WHERE name = 'series'")?
+            .exists([])?;
+        let series = if has_series {
+            "series, series_index"
+        } else {
+            "NULL, NULL"
+        };
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT id, path, filename, format, size, pages, title, authors, year, language,
-                    publisher, isbn, categories, tags, description, cover, added_at
-             FROM books",
-        )?;
+                    publisher, isbn, categories, tags, description, cover, added_at, {series}
+             FROM books"
+        ))?;
         // Columns are read loosely: a wrongly typed value becomes "missing".
         let rows = stmt.query_map([], |r| {
             let text = |i: usize| -> Option<String> {
@@ -72,6 +82,8 @@ impl CatalogDb {
                 description: text(14),
                 cover: text(15),
                 added_at: text(16),
+                series: text(17),
+                series_index: int(18),
             })
         })?;
         let mut books = Vec::new();

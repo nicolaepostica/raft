@@ -211,7 +211,12 @@ impl Index {
             .books
             .iter()
             .map(|b| Entry {
-                title: normalize(&format!("{} {}", b.title, b.filename)),
+                title: normalize(&format!(
+                    "{} {} {}",
+                    b.title,
+                    b.filename,
+                    b.series.as_deref().unwrap_or_default()
+                )),
                 authors: normalize(&b.authors.join(" ")),
                 tags: normalize(&format!("{} {}", b.tags.join(" "), b.categories.join(" "))),
                 description: normalize(&b.description),
@@ -258,6 +263,7 @@ enum Skip {
     Marks,
     Source,
     Folder,
+    Series,
 }
 
 fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
@@ -267,6 +273,12 @@ fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
     if skip != Skip::Folder
         && !f.folders.is_empty()
         && !book.folder().is_some_and(|d| f.folders.contains(&d))
+    {
+        return false;
+    }
+    if skip != Skip::Series
+        && !f.series.is_empty()
+        && !book.series.as_ref().is_some_and(|s| f.series.contains(s))
     {
         return false;
     }
@@ -366,11 +378,25 @@ pub fn search(
             .unwrap_or_default()
     };
     let year = |i: usize| book(i).and_then(|b| b.year);
+    // By title, with the volumes of a series together and in their order (volume 2 before
+    // volume 10), placed where the series name sorts.
+    let by_title = |i: usize| {
+        let b = book(i);
+        let series = b.and_then(|b| b.series.as_deref()).map(normalize);
+        let volume = b.and_then(|b| b.series_index);
+        (
+            series.clone().unwrap_or_else(|| title(i)),
+            series.is_some(),
+            volume.is_none(),
+            volume,
+            title(i),
+        )
+    };
     match query.sort {
         Sort::Relevance if !query_words(&query.text).is_empty() => {
             hits.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| title(a.0).cmp(&title(b.0))));
         }
-        Sort::Relevance | Sort::Title => hits.sort_by_cached_key(|h| title(h.0)),
+        Sort::Relevance | Sort::Title => hits.sort_by_cached_key(|h| by_title(h.0)),
         Sort::YearDesc => hits.sort_by_key(|h| (std::cmp::Reverse(year(h.0)), title(h.0))),
         Sort::YearAsc => hits.sort_by_key(|h| (year(h.0).is_none(), year(h.0), title(h.0))),
         Sort::RecentlyAdded => {
@@ -398,6 +424,8 @@ pub struct Facets {
     /// Books per subfolder (ignoring the folder filter), by path; books at the top
     /// of a library folder are not counted.
     pub folders: Vec<(String, usize)>,
+    /// Books per series (ignoring the series filter), by name.
+    pub series: Vec<(String, usize)>,
 }
 
 /// Facet counts for `query`: each facet is counted with every other filter applied.
@@ -412,6 +440,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
     let mut missing: BTreeMap<Field, usize> = BTreeMap::new();
     let mut sources: BTreeMap<String, usize> = BTreeMap::new();
     let mut folders: BTreeMap<String, usize> = BTreeMap::new();
+    let mut series: BTreeMap<String, usize> = BTreeMap::new();
     let no_years = Filters {
         year_min: None,
         year_max: None,
@@ -446,6 +475,11 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         {
             *folders.entry(d).or_default() += 1;
         }
+        if let Some(name) = &b.series
+            && passes(b, f, Skip::Series)
+        {
+            *series.entry(name.clone()).or_default() += 1;
+        }
         if passes(b, f, Skip::Marks) {
             for m in Mark::ALL.into_iter().filter(|m| b.has(*m)) {
                 *marks.entry(m).or_default() += 1;
@@ -476,6 +510,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         missing: missing.into_iter().collect(),
         sources: sources.into_iter().collect(),
         folders: folders.into_iter().collect(),
+        series: series.into_iter().collect(),
     }
 }
 
@@ -570,6 +605,32 @@ mod tests {
         assert_eq!(found, vec![0, 1]);
         // The folder facet ignores its own filter.
         assert_eq!(facets(&c, &i, &query, &[]).folders.len(), 2);
+        assert!(!query.filters.is_empty());
+    }
+
+    #[test]
+    fn series_filter_counts_and_volume_order() {
+        let mut c = sample();
+        for (b, (series, volume)) in c.books.iter_mut().zip([
+            (Some("Бард"), Some(10)),
+            (Some("Бард"), Some(2)),
+            (None, None),
+            (Some("Бард"), None),
+        ]) {
+            b.series = series.map(str::to_owned);
+            b.series_index = volume;
+        }
+        let i = Index::new(&c);
+        let mut query = Query::default();
+        assert_eq!(facets(&c, &i, &query, &[]).series, vec![("Бард".into(), 3)]);
+        // The series name is searchable text.
+        query.text = "бард".into();
+        assert_eq!(search(&c, &i, &query, &[]).len(), 3);
+        query.text.clear();
+        query.filters.series.insert("Бард".into());
+        // Volume 2 before volume 10, a volume without a number last.
+        assert_eq!(search(&c, &i, &query, &[]), vec![1, 0, 3]);
+        assert_eq!(facets(&c, &i, &query, &[]).series.len(), 1);
         assert!(!query.filters.is_empty());
     }
 

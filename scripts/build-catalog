@@ -22,10 +22,12 @@ Schema:
     books(id, path, filename, format, size, pages, title, authors, year, language, publisher,
           isbn, categories, tags, description, cover, mtime, added_at, updated_at)
       - authors / categories / tags are JSON lists
+      - series / series_index: the series a book belongs to and its volume (FB2 <sequence>,
+        EPUB calibre:series); '' = looked up, none. One name per series (variants unified).
     books_fts  — FTS5 table (title, authors, categories, tags, description, content) for search
     categories — the fixed list of categories (slug, display name)
 """
-import argparse, base64, concurrent.futures, datetime, hashlib, importlib.machinery, importlib.util, io, json, os, re
+import argparse, base64, collections, concurrent.futures, datetime, hashlib, importlib.machinery, importlib.util, io, json, os, re
 import shutil, sqlite3, subprocess, sys, tempfile, zipfile
 
 from PIL import Image
@@ -680,6 +682,72 @@ def fix_categories(db):
     return changed
 
 
+def add_series_columns(db):
+    """Adds the series columns to a catalog made before them."""
+    have = {r[1] for r in db.execute('PRAGMA table_info(books)')}
+    for col, kind in (('series', 'TEXT'), ('series_index', 'INTEGER')):
+        if col not in have:
+            db.execute(f'ALTER TABLE books ADD COLUMN {col} {kind}')
+    db.commit()
+
+
+# Collections that are not a series ("books waiting for a series", "outside any series").
+PSEUDO_SERIES = ('дожидающ', 'вне сери', 'без сери', 'not in series', 'standalone')
+
+
+def series_key(name):
+    """The key that merges the spellings of one series: case, ё/е, a "[Author]" suffix,
+    spaces."""
+    s = re.sub(r'\s*\[[^\]]*\]\s*$', '', name or '').lower().replace('ё', 'е')
+    return re.sub(r'\s+', ' ', s).strip(' .')
+
+
+def series_of(meta):
+    """(series name, volume) from a book's metadata; ('', None) when it names none."""
+    name = re.sub(r'\s+', ' ', meta.get('Series') or '').strip()[:200]
+    key = series_key(name)
+    if not key or any(p in key for p in PSEUDO_SERIES):
+        return '', None
+    m = re.match(r'\s*(\d{1,4})', meta.get('SeriesNumber') or '')
+    return name, (int(m.group(1)) if m else None)
+
+
+def fill_series(db, root):
+    """Looks up the series of the FB2 / EPUB books not looked up yet (series IS NULL); the
+    others get ''. Returns how many books were looked up."""
+    rows = db.execute('SELECT id, path, format FROM books WHERE series IS NULL').fetchall()
+    for bid, path, fmt in rows:
+        name, num = '', None
+        if fmt in ('fb2', 'epub'):
+            try:
+                meta, _ = rb.extract(os.path.join(root, path))
+                name, num = series_of(meta)
+            except Exception:
+                pass
+        db.execute('UPDATE books SET series=?, series_index=? WHERE id=?', (name, num, bid))
+    db.commit()
+    return len(rows)
+
+
+def canonical_series(db):
+    """Gives every series one name: the most common spelling among its books, without a
+    "[Author]" suffix. Returns how many books changed."""
+    rows = db.execute("SELECT id, series FROM books WHERE series <> ''").fetchall()
+    spellings = collections.defaultdict(collections.Counter)
+    for _, name in rows:
+        clean = re.sub(r'\s*\[[^\]]*\]\s*$', '', name).strip()
+        spellings[series_key(name)][clean] += 1
+    best = {k: sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[0][0] for k, c in spellings.items()}
+    changed = 0
+    for bid, name in rows:
+        new = best[series_key(name)]
+        if new != name:
+            db.execute('UPDATE books SET series=? WHERE id=?', (new, bid))
+            changed += 1
+    db.commit()
+    return changed
+
+
 def set_category(db, slug, folders):
     """Gives every book under the folders (relative to the library) the one category slug;
     returns how many books it covers. A folder with no book is an error, to catch typos."""
@@ -735,6 +803,7 @@ def main():
     os.makedirs(covers, exist_ok=True)
     db = sqlite3.connect(os.path.join(root, 'catalog.db'))
     db.executescript(SCHEMA)
+    add_series_columns(db)
     db.executemany('INSERT OR REPLACE INTO categories VALUES(?,?)', CATEGORIES.items())
     if a.clean_only:
         print(f'Download-site addresses stripped from the text of {clean_sites(db)} books.')
@@ -808,7 +877,9 @@ def main():
                 cats, tags = res.get('categories') or ['other'], res.get('tags') or []
                 authors = res.get('authors') or ([meta['Author']] if meta.get('Author') else [])
                 old = db.execute('SELECT added_at FROM books WHERE id=?', (bid,)).fetchone()
-                db.execute('INSERT OR REPLACE INTO books VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (
+                db.execute('INSERT OR REPLACE INTO books(id, path, filename, format, size, pages, title, '
+                           'authors, year, language, publisher, isbn, categories, tags, description, '
+                           'cover, mtime, added_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (
                     bid, f, os.path.basename(f), fmt, st.st_size, pages, title, json.dumps(authors, ensure_ascii=False), year,
                     res.get('language'), res.get('publisher'), res.get('isbn'),
                     json.dumps(cats), json.dumps(tags, ensure_ascii=False), res.get('description'),
@@ -834,6 +905,12 @@ def main():
             os.remove(c)
     db.commit()
 
+    found = fill_series(db, root)
+    if found:
+        print(f'Series looked up in {found} books.')
+    named = canonical_series(db)
+    if named:
+        print(f'Series names unified on {named} books.')
     fixed = fix_categories(db)
     if fixed:
         print(f'Categories put right on {fixed} books.')

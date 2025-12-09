@@ -173,6 +173,27 @@ pub const TABLE: &[(&str, &str, &str)] = &[
     ("Folder", "Folder", "Папка"),
     ("Foldere ({0})", "Folders ({0})", "Папки ({0})"),
     ("Foldere", "Folders", "Папки"),
+    ("Serie", "Series", "Серия"),
+    ("Serii", "Series", "Серии"),
+    ("Serii ({0})", "Series ({0})", "Серии ({0})"),
+    (
+        "Alte serii ({0})",
+        "Other series ({0})",
+        "Другие серии ({0})",
+    ),
+    (
+        "Arată toate volumele seriei",
+        "Show every volume of the series",
+        "Показать все тома серии",
+    ),
+    ("Volumul următor", "Next volume", "Следующий том"),
+    ("Volum în serie", "Volume in the series", "Том в серии"),
+    (
+        "gol = nu e dintr-o serie",
+        "empty = not in a series",
+        "пусто = не из серии",
+    ),
+    ("numărul volumului", "volume number", "номер тома"),
     (
         "Alte foldere ({0})",
         "Other folders ({0})",
@@ -199,6 +220,7 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Показать книги из папки",
     ),
     ("Filtru: folder", "Filter: folder", "Фильтр: папка"),
+    ("Filtru: serie", "Filter: series", "Фильтр: серия"),
     (
         "Adaugă un folder cu cărți (fără catalog.db se face unul, fără AI)",
         "Add a book folder (one without a catalog.db gets one, without AI)",

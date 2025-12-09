@@ -6,6 +6,10 @@ use crate::{Book, Format};
 pub const MAX_STR: usize = 8 * 1024;
 /// Most items kept in a list field (authors, tags, categories).
 pub const MAX_LIST: usize = 32;
+/// Longest kept series name, in bytes.
+pub const MAX_SERIES: usize = 200;
+/// Highest kept volume number in a series.
+pub const MAX_SERIES_INDEX: u32 = 9999;
 
 /// Builds a book from loose fields (also used by the SQLite loader).
 pub fn book_from_parts(parts: BookParts) -> Option<Book> {
@@ -38,7 +42,25 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
         source: String::new(),
         duplicates: Vec::new(),
         not_duplicate: false,
+        series: series_name(parts.series.as_deref().unwrap_or_default()),
+        series_index: parts
+            .series_index
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| *n <= MAX_SERIES_INDEX),
     })
+}
+
+/// A series name as kept: trimmed, at most [`MAX_SERIES`] bytes; `None` when empty.
+pub fn series_name(s: &str) -> Option<String> {
+    let mut s = s.trim().to_owned();
+    if s.len() > MAX_SERIES {
+        let mut end = MAX_SERIES;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
+    Some(s.trim_end().to_owned()).filter(|s| !s.is_empty())
 }
 
 /// Sites that books were downloaded from; never an author.
@@ -102,6 +124,8 @@ pub struct BookParts {
     pub description: Option<String>,
     pub cover: Option<String>,
     pub added_at: Option<String>,
+    pub series: Option<String>,
+    pub series_index: Option<i64>,
 }
 
 /// Accepts a JSON list of strings, or a string holding a JSON list (the SQLite form).
@@ -166,5 +190,27 @@ mod tests {
             vec!["Magnus Lie Hetland", "GoalKicker.com", "Сергей Тарасов"]
         );
         assert!(!is_junk_author("Userman Smith"));
+    }
+
+    #[test]
+    fn series_are_capped() {
+        let book = |series: &str, index: i64| {
+            book_from_parts(BookParts {
+                id: Some("x".into()),
+                series: Some(series.into()),
+                series_index: Some(index),
+                ..BookParts::default()
+            })
+        };
+        let b = book("  Бард ", 3).unwrap();
+        assert_eq!(
+            (b.series.as_deref(), b.series_index),
+            (Some("Бард"), Some(3))
+        );
+        let b = book("   ", -1).unwrap();
+        assert_eq!((b.series, b.series_index), (None, None));
+        let b = book(&"ё".repeat(500), 10_000).unwrap();
+        assert!(b.series.unwrap().len() <= MAX_SERIES);
+        assert_eq!(b.series_index, None);
     }
 }

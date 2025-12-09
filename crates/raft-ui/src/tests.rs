@@ -921,6 +921,39 @@ fn an_author_searches_and_the_x_clears_a_filter_too() {
 }
 
 #[test]
+fn a_series_on_the_book_page_and_in_the_filters() {
+    let mut ui = app();
+    let mut catalog = ui.session.catalog().clone();
+    for (b, volume) in catalog.books.iter_mut().zip([2, 1]) {
+        b.series = Some("Бард".into());
+        b.series_index = Some(volume);
+    }
+    ui.session = Session::new(catalog, vec![], Box::new(NullBackend));
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 1000.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.run();
+    // Volume 1 ("b") sorts first; its card says "#1".
+    h.get_by_label("FB2 · #1");
+    h.get_by_label("Serii (1)").click();
+    h.run();
+    h.get_by_label("Бард  (2)");
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "b"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Rust in Action").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Book { id: "a".into() });
+    h.get_by_label("Бард #2").click();
+    h.run();
+    assert_eq!(h.state().session.route(), &Route::Library);
+    assert!(h.state().session.query().filters.series.contains("Бард"));
+    h.get_by_label("Serii");
+    h.get_by_label("2 din 2 cărți");
+}
+
+#[test]
 fn continue_reading_has_its_own_tab() {
     let mut h = harness();
     h.run();

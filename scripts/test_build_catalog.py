@@ -134,6 +134,30 @@ class CleanCategoriesTest(unittest.TestCase):
         self.assertEqual(cc(['devops'], ['diagnostics', 'linux'], 'Linux'), ['devops'])
 
 
+class SeriesTest(unittest.TestCase):
+    def test_series_of_metadata(self):
+        self.assertEqual(bc.series_of({'Series': ' Магия - не для оборотней', 'SeriesNumber': '03'}),
+                         ('Магия - не для оборотней', 3))
+        self.assertEqual(bc.series_of({'Series': 'Бард', 'SeriesNumber': '1.5'}), ('Бард', 1))
+        self.assertEqual(bc.series_of({'Series': 'Бард'}), ('Бард', None))
+        self.assertEqual(bc.series_of({'Series': 'Книги дожидающиеся серии', 'SeriesNumber': '2'}), ('', None))
+        self.assertEqual(bc.series_of({}), ('', None))
+
+    def test_spellings_of_a_series_get_one_name(self):
+        import sqlite3
+        db = sqlite3.connect(':memory:')
+        db.executescript(bc.SCHEMA)
+        bc.add_series_columns(db)
+        bc.add_series_columns(db)   # twice: nothing to add the second time
+        for bid, name in (('a', 'Темный Лекарь'), ('b', 'Темный Лекарь'), ('c', 'Тёмный лекарь'),
+                          ('d', 'Бард [Карелин, Лисицин]'), ('e', 'Бард'), ('f', '')):
+            db.execute('INSERT INTO books(id, series) VALUES(?, ?)', (bid, name))
+        self.assertEqual(bc.canonical_series(db), 2)
+        got = dict(db.execute('SELECT id, series FROM books'))
+        self.assertEqual(got, {'a': 'Темный Лекарь', 'b': 'Темный Лекарь', 'c': 'Темный Лекарь',
+                               'd': 'Бард', 'e': 'Бард', 'f': ''})
+
+
 class HelpersTest(unittest.TestCase):
     def test_split_authors(self):
         self.assertEqual(bc.split_authors('A. Smith; B. Jones'), ['A. Smith', 'B. Jones'])

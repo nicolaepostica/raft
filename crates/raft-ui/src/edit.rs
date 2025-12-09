@@ -26,6 +26,8 @@ pub struct Draft {
     pub description: String,
     pub categories: BTreeSet<String>,
     pub reviewed: bool,
+    pub series: String,
+    pub series_index: String,
 }
 
 impl Draft {
@@ -42,6 +44,8 @@ impl Draft {
             description: b.description.clone(),
             categories: b.categories.iter().cloned().collect(),
             reviewed: b.reviewed,
+            series: b.series.clone().unwrap_or_default(),
+            series_index: b.series_index.map(|n| n.to_string()).unwrap_or_default(),
         }
     }
 
@@ -58,6 +62,8 @@ impl Draft {
             Field::Tags => self.tags.clone_from(&other.tags),
             Field::Description => self.description.clone_from(&other.description),
             Field::Reviewed => self.reviewed = other.reviewed,
+            Field::Series => self.series.clone_from(&other.series),
+            Field::SeriesIndex => self.series_index.clone_from(&other.series_index),
             // Not in the form: set from the book page.
             Field::NotDuplicate => {}
         }
@@ -79,6 +85,12 @@ impl Draft {
         text(Field::Publisher, &self.publisher, &current.publisher);
         text(Field::Isbn, &self.isbn, &current.isbn);
         text(Field::Tags, &self.tags, &current.tags);
+        text(Field::Series, &self.series, &current.series);
+        text(
+            Field::SeriesIndex,
+            &self.series_index,
+            &current.series_index,
+        );
         text(Field::Description, &self.description, &current.description);
         if self.reviewed != current.reviewed {
             out.insert(Field::Reviewed.slug().to_owned(), json!(self.reviewed));
@@ -114,6 +126,8 @@ pub fn label(field: Field) -> &'static str {
         Field::Description => t("Descriere"),
         Field::Reviewed => t("Verificată"),
         Field::NotDuplicate => t("Nu e dublură"),
+        Field::Series => t("Serie"),
+        Field::SeriesIndex => t("Volum în serie"),
     }
 }
 
@@ -128,7 +142,8 @@ fn field_label(
     let edited = app.session.edited_fields(&book.id).contains(&field);
     ui.horizontal(|ui| {
         let resp = ui.label(label(field));
-        if book.lacks(field) {
+        // Most books have no series: an empty one is not "missing".
+        if Field::ALL.contains(&field) && book.lacks(field) {
             let text = egui::RichText::new(t("lipsește")).small();
             if Field::REQUIRED.contains(&field) {
                 ui.label(text.color(ui.visuals().error_fg_color));
@@ -295,6 +310,10 @@ pub fn form(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     single(ui, &mut draft.isbn, &l, "");
     let l = field_label(app, ui, book, Field::Tags, &mut reset);
     single(ui, &mut draft.tags, &l, t("separate prin virgulă"));
+    let l = field_label(app, ui, book, Field::Series, &mut reset);
+    single(ui, &mut draft.series, &l, t("gol = nu e dintr-o serie"));
+    let l = field_label(app, ui, book, Field::SeriesIndex, &mut reset);
+    single(ui, &mut draft.series_index, &l, t("numărul volumului"));
     let l = field_label(app, ui, book, Field::Description, &mut reset);
     ui.add(
         egui::TextEdit::multiline(&mut draft.description)
