@@ -57,6 +57,27 @@ and Russian, in one folder with a SQLite catalog next to them.
   Ctrl+F searches, Ctrl+, opens the settings); the Shortcuts tab of the settings lists
   every key, with a search.
 
+## Install
+
+Linux x86_64, from [Releases](../../releases):
+
+```
+raft_<version>_amd64.deb                 Ubuntu 22.04+, Debian 12+
+raft-<version>-linux-x86_64.tar.gz       any distribution with glibc 2.35+
+SHA256SUMS.txt
+```
+
+- **.deb:** `sudo apt install ./raft_<version>_amd64.deb` installs `raft`, `build-catalog`,
+  `rename-books`, the menu entry and the icon, and pulls in poppler-utils, djvulibre and
+  Python with Pillow.
+- **.tar.gz:** unpack it anywhere and run `./raft`; `build-catalog` and `rename-books` are
+  next to it. Install `poppler-utils`, `djvulibre` and `python3-pillow` from the
+  distribution. `raft.desktop` and `raft.png` go to `~/.local/share/applications/` and
+  `~/.local/share/icons/hicolor/256x256/apps/` for a menu entry.
+
+Windows and macOS are not supported: opening files, the trash and the image picker use
+`xdg-open`, `gio` and `zenity`.
+
 ## Running
 
 ```bash
@@ -127,6 +148,19 @@ cargo xtask ci     # fmt, clippy -D warnings, tests, layer checks, wasm build
 
 The colours live in `assets/theme.toml`; `python3 assets/icon.py` redraws the icon from it.
 
-## Licence
+## Release
 
-MIT OR Apache-2.0.
+Every push runs CI (`cargo xtask ci`); when it passes on `main` and the version in
+`Cargo.toml` has no release yet, the Release workflow builds the packages and publishes them,
+with the version's section of [CHANGELOG.md](CHANGELOG.md) as the notes. Details in
+[packaging/RELEASING.md](packaging/RELEASING.md).
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option. Third-party material built into the binary is
+listed in [NOTICE](NOTICE) and, with full licence texts, in `THIRD-PARTY.txt` in every package.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion
+in this work by you, as defined in the Apache-2.0 license, shall be dual licensed as above,
+without any additional terms or conditions.

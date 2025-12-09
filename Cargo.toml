@@ -41,3 +41,6 @@ indexing_slicing = "deny"
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.release]
+strip = "symbols"

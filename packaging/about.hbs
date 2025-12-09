@@ -1,0 +1,23 @@
+Third-party material in Raft
+============================
+
+Raft is built from the Rust crates listed below. Their licences and copyright
+notices follow, grouped by licence.
+
+Overview:
+{{#each overview}}
+- {{{name}}} ({{count}} crates)
+{{/each}}
+
+{{#each licenses}}
+--------------------------------------------------------------------------------
+{{{name}}}
+
+Used by:
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}{{#if crate.repository}} ({{{crate.repository}}}){{/if}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

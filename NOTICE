@@ -1,0 +1,24 @@
+Raft
+Copyright (c) 2025 Nicolae Postica
+
+Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE) or the
+MIT license (LICENSE-MIT), at your option.
+
+The application icon (assets/icon.png) is drawn by assets/icon.py, part of Raft,
+under the same licence.
+
+Third-party material
+--------------------
+
+The raft binary is built from Rust crates, each under its own licence. Their full
+licence texts and copyright notices are in THIRD-PARTY.txt, next to this file.
+That includes the fonts egui builds into the binary (crate epaint_default_fonts):
+
+- Ubuntu Light, Ubuntu Font Licence 1.0
+- Hack, MIT and the Bitstream Vera licence
+- Noto Emoji, SIL Open Font License 1.1
+- emoji-icon-font and egui-icons, MIT, Copyright (c) 2014 John Slegers
+
+build-catalog and rename-books are Python scripts of Raft. At run time they call
+programs that are not part of Raft and are not shipped with it: poppler-utils,
+djvulibre, tesseract, Python 3 with Pillow and, optionally, the claude CLI.

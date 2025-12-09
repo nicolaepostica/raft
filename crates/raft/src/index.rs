@@ -98,16 +98,24 @@ impl Jobs {
     }
 }
 
-/// `build-catalog`: from `PATH`, else `~/.local/bin`.
+/// `build-catalog`: next to the raft binary (the release archive), else from
+/// `PATH`, else `~/.local/bin`.
 pub fn find_script() -> Option<PathBuf> {
-    let name = "build-catalog";
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf));
+    let path: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
-    if let Some(home) = std::env::var_os("HOME") {
-        dirs.push(Path::new(&home).join(".local/bin"));
-    }
-    dirs.into_iter().map(|d| d.join(name)).find(|p| p.is_file())
+    let home = std::env::var_os("HOME").map(|h| Path::new(&h).join(".local/bin"));
+    script_in(exe_dir.into_iter().chain(path).chain(home))
+}
+
+/// The first `build-catalog` file in `dirs`.
+fn script_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    dirs.into_iter()
+        .map(|d| d.join("build-catalog"))
+        .find(|p| p.is_file())
 }
 
 /// Progress from a line of build-catalog: `N books, M to process` (start) or
@@ -192,6 +200,17 @@ mod tests {
         let mut seen = Vec::new();
         for_lines(long.as_bytes(), |l| seen.push(l.len()));
         assert_eq!(seen, [MAX_LINE as usize, 4]);
+    }
+
+    #[test]
+    fn the_script_is_found_in_the_first_folder_that_has_it() {
+        let tmp = std::env::temp_dir().join(format!("raft-script-{}", std::process::id()));
+        let (a, b) = (tmp.join("a"), tmp.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        let found = script(&b, "true");
+        assert_eq!(script_in([a.clone(), b.clone()]), Some(found));
+        assert_eq!(script_in([a]), None);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     fn script(dir: &Path, body: &str) -> PathBuf {
