@@ -2,6 +2,7 @@
 
 mod control;
 mod index;
+mod mcp;
 mod native;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -47,7 +48,8 @@ fn parse_args() -> Result<Options> {
             }
             "-h" | "--help" => {
                 println!(
-                    "raft [--library DIR] [--data FILE] [--control PORT] [BOOK]\n\n\
+                    "raft [--library DIR] [--data FILE] [--control PORT] [BOOK]\n\
+                     raft mcp [--port PORT] [--no-start] [--data FILE]   an MCP server for agents (raft mcp --help)\n\n\
                      BOOK             a PDF, DjVu, EPUB or FB2 file to read (it need not be in the library)\n\
                      --library DIR    a library folder with catalog.db and covers/, added to the saved ones\n\
                                       (first run: default /backup/books, or $RAFT_LIBRARY)\n\
@@ -98,6 +100,13 @@ impl App {
                 },
                 Request::State => ok(self.ui.session.snapshot()),
                 Request::Commands => ok(commands_json()),
+                Request::Results { offset, limit } => {
+                    ok(self.ui.session.results_page(offset, limit))
+                }
+                Request::Book { id } => match self.ui.session.book(&id) {
+                    Some(b) => ok(serde_json::to_value(b).unwrap_or_default()),
+                    None => error(format!("no book with id `{id}`")),
+                },
                 Request::Screenshot { path } => {
                     let reply = p.reply.clone();
                     let cb = egui::ScreenshotCallback::new(move |img| {
@@ -180,6 +189,11 @@ fn app_icon() -> egui::IconData {
 }
 
 fn main() -> Result<()> {
+    let mut args = std::env::args().skip(1).peekable();
+    if args.peek().map(String::as_str) == Some("mcp") {
+        args.next();
+        return mcp::main(args);
+    }
     let opts = parse_args()?;
     let backend = native::NativeBackend::open(&opts.data)?;
     // The saved library folders; the first run starts with --library (or its default).

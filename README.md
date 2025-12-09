@@ -89,12 +89,39 @@ cargo run --release -p raft -- --library /backup/books
 | `BOOK` | a PDF, DjVu, EPUB or FB2 file to read at start; it need not be in the library |
 | `--library DIR` | a library folder with `catalog.db` and `covers/`, added to the saved ones (on the first run the default is `/backup/books`, or `$RAFT_LIBRARY`) |
 | `--data FILE` | the app's own database: progress, corrections, settings (default `~/.local/share/raft/raft.db`) |
-| `--control PORT` | a local JSON control channel on `127.0.0.1:PORT` (commands, state, screenshots) |
+| `--control PORT` | a local JSON control channel on `127.0.0.1:PORT` (commands, state, results, screenshots) |
+| `raft mcp` | an MCP server for agents, see below |
 
 `RAFT_THEME=light|dark` overrides the saved theme for one run. Rendering pages needs
 `poppler-utils` (`pdftoppm`) and `djvulibre` (`ddjvu`); moving books to the trash needs `gio`.
 
 `assets/raft.desktop` and `assets/icon.png` are a desktop entry and icon for launchers.
+
+## Agents (MCP)
+
+`raft mcp` is an [MCP](https://modelcontextprotocol.io) server on stdin/stdout, so an agent
+(Claude Code, Claude Desktop, any MCP client) can drive Raft with the same commands as its
+menus and keys:
+
+```bash
+claude mcp add raft -- raft mcp
+```
+
+It talks to the app's control channel on `127.0.0.1:7878` and starts `raft --control 7878`
+when nothing answers there (`--port PORT` for another port, `--no-start` to only connect,
+`--data FILE` for the app it starts).
+
+| Tool | What it does |
+|---|---|
+| `raft_commands` | every command with its params |
+| `raft_run` | runs a command: `{"command": "search.set", "params": {"text": "rust"}}` |
+| `raft_results` | a page of the books the current search and filters find |
+| `raft_book` | every field of one book |
+| `raft_state` | screen, query, filters, undo/redo, settings |
+| `raft_screenshot` | a PNG of the window |
+
+Changes an agent makes go into the undo history like any other. The window has to be on
+screen: a minimised window does not answer (the control channel waits for a frame).
 
 ## The library and its catalog
 

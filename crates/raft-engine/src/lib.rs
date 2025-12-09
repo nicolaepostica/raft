@@ -3,6 +3,7 @@
 
 mod commands;
 pub mod control;
+pub mod mcp;
 mod params;
 
 use std::collections::{BTreeMap, HashMap};
@@ -973,6 +974,32 @@ impl Session {
     }
 
     /// JSON summary for the control channel and tests.
+    /// A page of the books found, in their order, with the fields that tell them apart
+    /// (`results` on the control channel).
+    pub fn results_page(&self, offset: usize, limit: usize) -> Value {
+        let books: Vec<Value> = self
+            .results()
+            .skip(offset)
+            .take(limit)
+            .map(|b| {
+                serde_json::json!({
+                    "id": b.id,
+                    "title": b.title,
+                    "authors": b.authors,
+                    "year": b.year,
+                    "format": b.format,
+                    "language": b.language,
+                    "pages": b.pages,
+                    "series": b.series,
+                    "series_index": b.series_index,
+                    "categories": b.categories,
+                    "file": b.file_path(),
+                })
+            })
+            .collect();
+        serde_json::json!({ "total": self.results.len(), "offset": offset, "books": books })
+    }
+
     pub fn snapshot(&self) -> Value {
         serde_json::json!({
             "route": self.state.route,

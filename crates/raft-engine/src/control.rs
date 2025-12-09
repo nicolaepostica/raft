@@ -5,6 +5,8 @@
 //! - `{"method": "state"}`
 //! - `{"method": "commands"}`
 //! - `{"method": "ui.screenshot", "path": "/tmp/shot.png"}`
+//! - `{"method": "results", "offset": 0, "limit": 20}`: the books found, a page at a time
+//! - `{"method": "book", "id": "…"}`: one book with every field
 //!
 //! Replies: `{"ok": true, "result": ...}` or `{"ok": false, "error": "..."}`.
 
@@ -14,6 +16,8 @@ use crate::registry;
 
 /// Longest accepted request line, in bytes.
 pub const MAX_LINE: usize = 64 * 1024;
+/// Most books in one `results` page.
+pub const MAX_RESULTS: usize = 200;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Request {
@@ -21,6 +25,8 @@ pub enum Request {
     State,
     Commands,
     Screenshot { path: String },
+    Results { offset: usize, limit: usize },
+    Book { id: String },
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -62,6 +68,23 @@ pub fn parse_request(line: &[u8]) -> Result<Request, ControlError> {
             Ok(Request::Screenshot {
                 path: path.to_owned(),
             })
+        }
+        Some("results") => {
+            let num = |k: &str, default: usize| match v.get(k) {
+                None | Some(Value::Null) => Ok(default),
+                Some(n) => n
+                    .as_u64()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .ok_or_else(|| ControlError::Bad(format!("`{k}` must be a whole number"))),
+            };
+            Ok(Request::Results {
+                offset: num("offset", 0)?,
+                limit: num("limit", 20)?.min(MAX_RESULTS),
+            })
+        }
+        Some("book") => {
+            let id = field("id").ok_or_else(|| ControlError::Bad("`book` needs `id`".into()))?;
+            Ok(Request::Book { id: id.to_owned() })
         }
         Some(other) => Err(ControlError::Bad(format!("unknown method `{other}`"))),
         None => Err(ControlError::Bad("missing `method`".into())),
@@ -130,6 +153,26 @@ mod tests {
         assert!(parse_request(b"nope").is_err());
         assert!(parse_request(&vec![b' '; MAX_LINE + 1]).is_err());
         assert!(commands_json().as_array().is_some_and(|a| !a.is_empty()));
+        assert_eq!(
+            parse_request(br#"{"method":"results"}"#),
+            Ok(Request::Results {
+                offset: 0,
+                limit: 20
+            })
+        );
+        assert_eq!(
+            parse_request(br#"{"method":"results","offset":40,"limit":100000}"#),
+            Ok(Request::Results {
+                offset: 40,
+                limit: MAX_RESULTS
+            })
+        );
+        assert!(parse_request(br#"{"method":"results","limit":-1}"#).is_err());
+        assert_eq!(
+            parse_request(br#"{"method":"book","id":"abc"}"#),
+            Ok(Request::Book { id: "abc".into() })
+        );
+        assert!(parse_request(br#"{"method":"book"}"#).is_err());
     }
 
     proptest! {

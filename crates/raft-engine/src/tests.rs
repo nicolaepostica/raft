@@ -1144,3 +1144,21 @@ fn library_tabs_switch_without_undo_and_search_shows_the_library() {
     s.run("view.tab.library", &Value::Null).unwrap();
     assert_eq!(s.library_tab(), "library");
 }
+
+#[test]
+fn results_come_a_page_at_a_time_for_the_control_channel() {
+    let (s, _) = session();
+    let all = s.results_page(0, 100);
+    let total = all["total"].as_u64().unwrap() as usize;
+    assert!(total >= 2);
+    let books = all["books"].as_array().unwrap();
+    assert_eq!(books.len(), total);
+    let first = books.first().unwrap();
+    assert_eq!(first["id"], json!(s.results().next().unwrap().id));
+    assert!(first["title"].is_string() && first["file"].is_string());
+    assert!(first.get("description").is_none());
+    let page = s.results_page(1, 1);
+    assert_eq!(page["books"].as_array().unwrap().len(), 1);
+    assert_eq!(page["books"][0]["id"], books[1]["id"]);
+    assert_eq!(s.results_page(total, 10)["books"], json!([]));
+}
