@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::sanitize::{MAX_LIST, MAX_STR, cap};
-use crate::{Book, BookId};
+use crate::{Book, BookId, ReadState};
 
 /// A metadata field that can be corrected by hand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -31,6 +31,12 @@ pub enum Field {
     Series,
     /// The volume in the series (digits or "").
     SeriesIndex,
+    /// Not metadata: the reading state (`to_read`, `reading`, `read`, `abandoned` or absent).
+    Status,
+    /// Not metadata: a favourite ("1" or absent).
+    Favorite,
+    /// Not metadata: the owner's rating, "1" to "5" (absent = not rated).
+    Rating,
 }
 
 impl Field {
@@ -71,12 +77,18 @@ impl Field {
             Self::NotDuplicate => "not_duplicate",
             Self::Series => "series",
             Self::SeriesIndex => "series_index",
+            Self::Status => "status",
+            Self::Favorite => "favorite",
+            Self::Rating => "rating",
         }
     }
 
     /// Marks set by hand, kept with the corrections but not corrections themselves.
     pub fn is_mark(self) -> bool {
-        matches!(self, Self::Reviewed | Self::NotDuplicate)
+        matches!(
+            self,
+            Self::Reviewed | Self::NotDuplicate | Self::Status | Self::Favorite | Self::Rating
+        )
     }
 
     pub fn from_slug(s: &str) -> Option<Self> {
@@ -87,6 +99,9 @@ impl Field {
                 Self::SeriesIndex,
                 Self::Reviewed,
                 Self::NotDuplicate,
+                Self::Status,
+                Self::Favorite,
+                Self::Rating,
             ])
             .find(|f| f.slug() == s)
     }
@@ -126,6 +141,16 @@ pub fn field_value(book: &Book, field: Field) -> String {
         Field::NotDuplicate => if book.not_duplicate { "1" } else { "" }.to_owned(),
         Field::Series => book.series.clone().unwrap_or_default(),
         Field::SeriesIndex => book.series_index.map(|n| n.to_string()).unwrap_or_default(),
+        Field::Status => book
+            .status
+            .map(ReadState::slug)
+            .unwrap_or_default()
+            .to_owned(),
+        Field::Favorite => if book.favorite { "1" } else { "" }.to_owned(),
+        Field::Rating => match book.rating {
+            0 => String::new(),
+            n => n.to_string(),
+        },
     }
 }
 
@@ -184,8 +209,22 @@ pub fn apply(book: &mut Book, field: Field, value: &str) {
                 book.series_index = Some(n);
             }
         }
+        Field::Status => book.status = ReadState::from_slug(value.trim()),
+        Field::Favorite => book.favorite = value.trim() == "1",
+        Field::Rating => {
+            if value.trim().is_empty() {
+                book.rating = 0;
+            } else if let Ok(n) = value.trim().parse::<u8>()
+                && n <= MAX_RATING
+            {
+                book.rating = n;
+            }
+        }
     }
 }
+
+/// Most stars a book can have.
+pub const MAX_RATING: u8 = 5;
 
 /// `book` with all its corrections applied, and its `edited` mark set.
 pub fn edited(book: &Book, overrides: &Overrides) -> Book {
@@ -233,6 +272,38 @@ mod tests {
             apply(&mut c, f, &v);
             assert_eq!(field_value(&c, f), v, "{f:?}");
         }
+    }
+
+    #[test]
+    fn status_favourite_and_rating_round_trip_as_marks() {
+        let mut b = book();
+        apply(&mut b, Field::Status, "reading");
+        apply(&mut b, Field::Favorite, "1");
+        apply(&mut b, Field::Rating, "4");
+        assert_eq!(
+            (b.status, b.favorite, b.rating),
+            (Some(ReadState::Reading), true, 4)
+        );
+        for f in [Field::Status, Field::Favorite, Field::Rating] {
+            assert!(f.is_mark() && !Field::ALL.contains(&f));
+            assert_eq!(Field::from_slug(f.slug()), Some(f));
+            let v = field_value(&b, f);
+            let mut c = book();
+            apply(&mut c, f, &v);
+            assert_eq!(field_value(&c, f), v, "{f:?}");
+        }
+        // Bad values leave the book as it was; empty ones clear.
+        apply(&mut b, Field::Rating, "9");
+        apply(&mut b, Field::Status, "someday");
+        assert_eq!((b.status, b.rating), (None, 4));
+        apply(&mut b, Field::Rating, "");
+        assert_eq!(b.rating, 0);
+        let mut o = Overrides::new();
+        o.entry("x".into())
+            .or_default()
+            .insert(Field::Status, "read".into());
+        let e = edited(&book(), &o);
+        assert!(e.status == Some(ReadState::Read) && !e.edited);
     }
 
     #[test]

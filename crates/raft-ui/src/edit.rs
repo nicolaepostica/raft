@@ -65,7 +65,7 @@ impl Draft {
             Field::Series => self.series.clone_from(&other.series),
             Field::SeriesIndex => self.series_index.clone_from(&other.series_index),
             // Not in the form: set from the book page.
-            Field::NotDuplicate => {}
+            Field::NotDuplicate | Field::Status | Field::Favorite | Field::Rating => {}
         }
     }
 
@@ -128,6 +128,9 @@ pub fn label(field: Field) -> &'static str {
         Field::NotDuplicate => t("Nu e dublură"),
         Field::Series => t("Serie"),
         Field::SeriesIndex => t("Volum în serie"),
+        Field::Status => t("Stare"),
+        Field::Favorite => t("Preferate"),
+        Field::Rating => t("Notă"),
     }
 }
 

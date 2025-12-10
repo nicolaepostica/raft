@@ -65,6 +65,21 @@ pub fn duplicate() -> egui::Color32 {
     color("duplicate")
 }
 
+/// Colour of a reading state's badge.
+pub fn status(state: raft_doc::ReadState) -> egui::Color32 {
+    color(&format!("status_{}", state.slug()))
+}
+
+/// Colour of the favourite heart.
+pub fn favorite() -> egui::Color32 {
+    color("favorite")
+}
+
+/// Colour of the rating stars.
+pub fn star() -> egui::Color32 {
+    color("star")
+}
+
 fn visuals(dark: bool) -> egui::Visuals {
     let (mut v, side) = if dark {
         (egui::Visuals::dark(), "_dark")
@@ -152,6 +167,12 @@ mod tests {
             "edited",
             "incomplete",
             "duplicate",
+            "status_to_read",
+            "status_reading",
+            "status_read",
+            "status_abandoned",
+            "favorite",
+            "star",
         ] {
             assert!(value(key).and_then(parse_hex).is_some(), "{key}");
         }

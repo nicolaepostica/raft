@@ -4,6 +4,16 @@ All notable changes to Raft. The format follows [Keep a Changelog](https://keepa
 and versions follow [Semantic Versioning](https://semver.org/). A version's date is the date of
 the commit its tag points to.
 
+## [Unreleased]
+
+### Added
+
+- **Reading states, favourites and ratings:** mark a book as to read, reading, read or
+  abandoned, as a favourite, and give it 1 to 5 stars, on its page or for all the selected
+  books at once; filter by state and favourites (with counts); a badge and a heart on the
+  cover. Opening a book marks it as being read; at the end of a book the reader offers to mark
+  it as read.
+
 ## [0.1.0] — 2026-11-27
 
 The first release: Linux x86_64 (`.deb` and `.tar.gz`).

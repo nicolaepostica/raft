@@ -1027,3 +1027,94 @@ fn a_file_from_outside_the_library_has_its_own_page() {
     // Not in the library's results either.
     h.get_by_label("2 din 2 cărți");
 }
+
+#[test]
+fn status_heart_and_stars_on_the_book_page_and_in_the_filters() {
+    use raft_doc::ReadState;
+    let mut h = harness();
+    h.run();
+    h.state_mut()
+        .run("view.book", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    h.get_by_label("Adaugă la preferate").click();
+    h.run();
+    h.get_by_label("4 stele").click();
+    h.run();
+    let b = h.state().session.book("a").cloned().unwrap();
+    assert!(b.favorite && b.rating == 4);
+    // The current rating's star clears it; the heart takes the favourite off again.
+    h.get_by_label("4 stele").click();
+    h.run();
+    assert_eq!(h.state().session.book("a").unwrap().rating, 0);
+    h.get_by_label("Starea cărții").click();
+    h.run();
+    h.get_by_label("De citit").click();
+    h.run();
+    assert_eq!(
+        h.state().session.book("a").unwrap().status,
+        Some(ReadState::ToRead)
+    );
+    h.state_mut()
+        .run("view.library", serde_json::json!({}))
+        .unwrap();
+    h.run();
+    // The filters count the states and the favourites; the card shows the badge.
+    h.get_by_label("♥ Preferate  (1)").click();
+    h.run();
+    h.get_by_label("1 din 2 cărți");
+    h.get_by_label("♥ Preferate  (1)").click();
+    h.get_by_label("De citit  (1)").click();
+    h.run();
+    h.get_by_label("1 din 2 cărți");
+    assert!(
+        h.state()
+            .session
+            .query()
+            .filters
+            .states
+            .contains(&ReadState::ToRead)
+    );
+    h.get_by_label("De citit  (1)").click();
+    h.run();
+    // From the selection bar, for every ticked book at once.
+    h.get_by_label("Selectează: Rust in Action").click();
+    h.run();
+    h.get_by_label("Selectează toate (2)").click();
+    h.run();
+    h.get_by_label("Schimbă starea cărților selectate").click();
+    h.run();
+    h.get_by_label("Citită").click();
+    h.run();
+    assert!(
+        h.state()
+            .session
+            .catalog()
+            .books
+            .iter()
+            .all(|b| b.status == Some(ReadState::Read))
+    );
+    h.get_by_label("Citită  (2)");
+}
+
+#[test]
+fn the_reader_offers_to_mark_a_finished_book_as_read() {
+    let mut h = harness();
+    h.run();
+    h.state_mut()
+        .run("book.read", serde_json::json!({"id": "a"}))
+        .unwrap();
+    h.run();
+    assert!(h.query_by_label_contains("Am terminat-o").is_none());
+    h.state_mut()
+        .run("reader.goto", serde_json::json!({"page": 10}))
+        .unwrap();
+    h.run();
+    h.get_by_label("✔ Am terminat-o").click();
+    h.run();
+    assert_eq!(
+        h.state().session.book("a").unwrap().status,
+        Some(raft_doc::ReadState::Read)
+    );
+    assert!(h.query_by_label_contains("Am terminat-o").is_none());
+}

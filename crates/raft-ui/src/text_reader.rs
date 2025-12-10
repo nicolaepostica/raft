@@ -333,6 +333,9 @@ fn top_bar(app: &mut RaftUi, ui: &mut egui::Ui, title: &str, id: &str) {
         ui.separator();
         crate::zoom_controls(app, ui);
         ui.separator();
+        if let Some(book) = app.session.book(id).cloned() {
+            crate::finished_offer(app, ui, &book);
+        }
         ui.add(egui::Label::new(egui::RichText::new(title).strong()).truncate());
     });
 }

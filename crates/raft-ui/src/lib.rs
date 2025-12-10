@@ -516,6 +516,29 @@ pub(crate) fn icon_button(
     resp.on_hover_text(hint).on_disabled_hover_text(hint)
 }
 
+/// From this far into a book on, the reader offers to mark it as read.
+const FINISHED_PERCENT: f32 = 98.0;
+
+/// In a reader's bar: at the end of a book that is not marked as read, a button that does it.
+pub(crate) fn finished_offer(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book) {
+    let at_end = app
+        .session
+        .progress(&book.id)
+        .is_some_and(|p| p.percent >= FINISHED_PERCENT);
+    if !at_end || book.status == Some(raft_doc::ReadState::Read) || app.session.is_outside(&book.id)
+    {
+        return;
+    }
+    if ui
+        .button(format!("✔ {}", t("Am terminat-o")))
+        .on_hover_text(t("Marchează cartea ca citită"))
+        .clicked()
+    {
+        app.act("book.status", json!({ "id": book.id, "state": "read" }));
+    }
+    ui.separator();
+}
+
 /// The reader's zoom: smaller, the zoom in percent (a click resets it), larger.
 pub(crate) fn zoom_controls(app: &mut RaftUi, ui: &mut egui::Ui) {
     let zoom = app.session.zoom();

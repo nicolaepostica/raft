@@ -993,6 +993,9 @@ impl Session {
                     "series": b.series,
                     "series_index": b.series_index,
                     "categories": b.categories,
+                    "status": b.status,
+                    "favorite": b.favorite,
+                    "rating": b.rating,
                     "file": b.file_path(),
                 })
             })

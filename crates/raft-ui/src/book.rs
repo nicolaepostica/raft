@@ -247,6 +247,10 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                         }
                     });
                 }
+                if !outside {
+                    ui.add_space(6.0);
+                    reading_marks(app, ui, &book);
+                }
                 ui.add_space(8.0);
                 egui::Grid::new("meta")
                     .num_columns(2)
@@ -406,6 +410,88 @@ pub fn book_page(app: &mut RaftUi, ui: &mut egui::Ui, id: &str) {
                 }
             });
         });
+    });
+}
+
+/// The reading state, the favourite heart and the stars, under the authors.
+fn reading_marks(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
+    use raft_doc::ReadState;
+    ui.horizontal(|ui| {
+        let current = book.status;
+        let text = match current {
+            Some(st) => egui::RichText::new(crate::library::status_label(st))
+                .color(crate::theme::status(st)),
+            None => egui::RichText::new(t("Fără stare")).weak(),
+        };
+        egui::ComboBox::from_id_salt("book-status")
+            .selected_text(text)
+            .show_ui(ui, |ui| {
+                for st in ReadState::ALL {
+                    if ui
+                        .selectable_label(current == Some(st), crate::library::status_label(st))
+                        .clicked()
+                        && current != Some(st)
+                    {
+                        app.act("book.status", json!({ "id": book.id, "state": st.slug() }));
+                    }
+                }
+                if ui
+                    .selectable_label(current.is_none(), t("Fără stare"))
+                    .clicked()
+                    && current.is_some()
+                {
+                    app.act("book.status", json!({ "id": book.id, "state": null }));
+                }
+            })
+            .response
+            .on_hover_text(t("Starea cărții"))
+            .widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::ComboBox, true, t("Starea cărții"))
+            });
+        ui.add_space(8.0);
+        let (heart, name) = if book.favorite {
+            ("♥", t("Scoate din preferate"))
+        } else {
+            ("♡", t("Adaugă la preferate"))
+        };
+        let button = egui::Button::new(
+            egui::RichText::new(heart)
+                .size(22.0)
+                .color(crate::theme::favorite()),
+        )
+        .frame(false);
+        let resp = ui.add(button);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+        if resp.on_hover_text(name).clicked() {
+            app.act(
+                "book.favorite",
+                json!({ "id": book.id, "on": !book.favorite }),
+            );
+        }
+        ui.add_space(8.0);
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for n in 1..=raft_doc::edits::MAX_RATING {
+            let on = n <= book.rating;
+            let star = egui::RichText::new(if on { "★" } else { "☆" }).size(22.0);
+            let star = if on {
+                star.color(crate::theme::star())
+            } else {
+                star.weak()
+            };
+            let resp = ui.add(egui::Button::new(star).frame(false));
+            let name = tf("{0} stele", &[&n]);
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
+            // The current rating's star clears it.
+            let hint = if n == book.rating {
+                t("Șterge nota").to_owned()
+            } else {
+                name.clone()
+            };
+            if resp.on_hover_text(hint).clicked() {
+                let stars = if n == book.rating { 0 } else { n };
+                app.act("book.rating", json!({ "id": book.id, "stars": stars }));
+            }
+        }
     });
 }
 

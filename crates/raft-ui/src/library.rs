@@ -2,7 +2,7 @@
 //! "continue reading" (the started books, most recently read first).
 
 use raft_doc::edits::Field;
-use raft_doc::{Book, Format, Mark, Sort};
+use raft_doc::{Book, Format, Mark, ReadState, Sort};
 use serde_json::json;
 
 use crate::i18n::{t, tf};
@@ -49,6 +49,8 @@ pub fn filters(app: &mut RaftUi, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
 
+        statuses(app, ui, &facets, &filters);
+        ui.add_space(6.0);
         marks(app, ui, &facets, &filters);
         ui.add_space(6.0);
 
@@ -384,6 +386,56 @@ fn mark_label(m: Mark) -> &'static str {
         Mark::Incomplete => t("Date incomplete"),
         Mark::Reviewed => t("Verificate"),
         Mark::Duplicate => t("Dubluri posibile"),
+        Mark::Favorite => t("Preferate"),
+    }
+}
+
+/// A reading state as shown (filters, badges, the book page).
+pub(crate) fn status_label(st: ReadState) -> &'static str {
+    match st {
+        ReadState::ToRead => t("De citit"),
+        ReadState::Reading => t("În lectură"),
+        ReadState::Read => t("Citită"),
+        ReadState::Abandoned => t("Abandonată"),
+    }
+}
+
+/// The "Stare" section: the reading states with their counts, then the favourites.
+fn statuses(
+    app: &mut RaftUi,
+    ui: &mut egui::Ui,
+    facets: &raft_engine::Facets,
+    filters: &raft_doc::Filters,
+) {
+    ui.strong(t("Stare"));
+    for st in ReadState::ALL {
+        let n = facets
+            .states
+            .iter()
+            .find(|(k, _)| *k == st)
+            .map_or(0, |(_, n)| *n);
+        let mut on = filters.states.contains(&st);
+        if ui
+            .checkbox(&mut on, format!("{}  ({n})", status_label(st)))
+            .changed()
+        {
+            app.act("filter.status.toggle", json!({ "state": st.slug() }));
+        }
+    }
+    let n = facets
+        .marks
+        .iter()
+        .find(|(k, _)| *k == Mark::Favorite)
+        .map_or(0, |(_, n)| *n);
+    let mut on = filters.marks.contains(&Mark::Favorite);
+    if ui
+        .checkbox(&mut on, format!("♥ {}  ({n})", mark_label(Mark::Favorite)))
+        .changed()
+    {
+        app.act(
+            "filter.mark.toggle",
+            json!({ "mark": Mark::Favorite.slug() }),
+        );
     }
 }
 
@@ -402,7 +454,8 @@ fn marks(
             .find(|(k, _)| *k == m)
             .map_or(0, |(_, n)| *n)
     };
-    for m in Mark::ALL {
+    // The favourites are listed with the reading states.
+    for m in Mark::ALL.into_iter().filter(|m| *m != Mark::Favorite) {
         let mut on = filters.marks.contains(&m);
         let hint = match m {
             Mark::Edited => t("Cărți în care ai corectat cel puțin un câmp"),
@@ -413,6 +466,7 @@ fn marks(
             Mark::Duplicate => t(
                 "Cărți cu același ISBN, sau cu același titlu, an și volum, ca alta din bibliotecă",
             ),
+            Mark::Favorite => "",
         };
         if ui
             .checkbox(&mut on, format!("{}  ({})", mark_label(m), count(m)))
@@ -444,12 +498,23 @@ fn marks(
 
 /// A small label in a filled rounded box, its top-left corner at `pos`; returns its height.
 fn badge(painter: &egui::Painter, pos: egui::Pos2, text: &str, fill: egui::Color32) -> f32 {
+    badge_at(painter, pos, egui::Align2::LEFT_TOP, text, fill)
+}
+
+/// A badge placed by its `align` corner at `pos`; returns its height.
+fn badge_at(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    align: egui::Align2,
+    text: &str,
+    fill: egui::Color32,
+) -> f32 {
     let galley = painter.layout_no_wrap(
         text.to_owned(),
         egui::FontId::proportional(crate::theme::small_size()),
         egui::Color32::WHITE,
     );
-    let rect = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(8.0, 2.0));
+    let rect = align.anchor_size(pos, galley.size() + egui::vec2(8.0, 2.0));
     painter.rect_filled(rect, 4.0, fill);
     painter.galley(
         rect.min + egui::vec2(4.0, 1.0),
@@ -544,7 +609,7 @@ fn selection_bar(app: &mut RaftUi, ui: &mut egui::Ui, results: usize) {
         .corner_radius(6.0)
         .inner_margin(egui::Margin::symmetric(10, 6))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.strong(tf("{0} selectate", &[&n]));
                 ui.separator();
                 if ui
@@ -555,6 +620,34 @@ fn selection_bar(app: &mut RaftUi, ui: &mut egui::Ui, results: usize) {
                 }
                 if ui.button(t("Deselectează")).on_hover_text("Esc").clicked() {
                     app.act("select.clear", json!({}));
+                }
+                ui.separator();
+                egui::ComboBox::from_id_salt("bulk-status")
+                    .selected_text(t("Stare…"))
+                    .show_ui(ui, |ui| {
+                        for st in ReadState::ALL {
+                            if ui.selectable_label(false, status_label(st)).clicked() {
+                                app.act("books.status", json!({ "state": st.slug() }));
+                            }
+                        }
+                        if ui.selectable_label(false, t("Fără stare")).clicked() {
+                            app.act("books.status", json!({ "state": null }));
+                        }
+                    })
+                    .response
+                    .on_hover_text(t("Schimbă starea cărților selectate"))
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::Role::ComboBox,
+                            true,
+                            t("Schimbă starea cărților selectate"),
+                        )
+                    });
+                if ui.button(format!("♥ {}", t("La preferate"))).clicked() {
+                    app.act("books.favorite", json!({ "on": true }));
+                }
+                if ui.button(t("Scoate din preferate")).clicked() {
+                    app.act("books.favorite", json!({ "on": false }));
                 }
                 ui.separator();
                 let delete = egui::Button::new(
@@ -719,6 +812,28 @@ fn card(app: &mut RaftUi, ui: &mut egui::Ui, book: &Book) {
     }
     if !book.duplicates.is_empty() {
         badge(&painter, at(y), t("dublură?"), crate::theme::duplicate());
+    }
+    // The reading state bottom left, the favourite heart bottom right, above the progress bar.
+    let bottom = cover_rect.bottom() - 8.0;
+    if let Some(st) = book.status {
+        badge_at(
+            &painter,
+            egui::pos2(cover_rect.left() + 4.0, bottom),
+            egui::Align2::LEFT_BOTTOM,
+            status_label(st),
+            crate::theme::status(st),
+        );
+    }
+    if book.favorite {
+        let at = egui::pos2(cover_rect.right() - 14.0, bottom - 9.0);
+        painter.circle_filled(at, 11.0, visuals.extreme_bg_color.gamma_multiply(0.9));
+        painter.text(
+            at,
+            egui::Align2::CENTER_CENTER,
+            "♥",
+            egui::FontId::proportional(15.0),
+            crate::theme::favorite(),
+        );
     }
     if let Some(p) = app.session.progress(&book.id) {
         let bar = egui::Rect::from_min_size(

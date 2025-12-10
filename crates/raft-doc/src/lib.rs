@@ -173,6 +173,15 @@ pub struct Book {
     /// Its volume in the series.
     #[serde(default)]
     pub series_index: Option<u32>,
+    /// Where the owner is with it (set from the overrides, not the catalog).
+    #[serde(default)]
+    pub status: Option<ReadState>,
+    /// Marked as a favourite.
+    #[serde(default)]
+    pub favorite: bool,
+    /// Stars, 1 to 5; 0 = not rated.
+    #[serde(default)]
+    pub rating: u8,
 }
 
 impl Book {
@@ -234,7 +243,35 @@ impl Book {
             Mark::Incomplete => self.is_incomplete(),
             Mark::Reviewed => self.reviewed,
             Mark::Duplicate => !self.duplicates.is_empty(),
+            Mark::Favorite => self.favorite,
         }
+    }
+}
+
+/// Where the owner is with a book.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadState {
+    ToRead,
+    Reading,
+    Read,
+    Abandoned,
+}
+
+impl ReadState {
+    pub const ALL: [ReadState; 4] = [Self::ToRead, Self::Reading, Self::Read, Self::Abandoned];
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::ToRead => "to_read",
+            Self::Reading => "reading",
+            Self::Read => "read",
+            Self::Abandoned => "abandoned",
+        }
+    }
+
+    pub fn from_slug(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.slug() == s)
     }
 }
 
@@ -250,14 +287,17 @@ pub enum Mark {
     Reviewed,
     /// Probably the same work as another book of the library.
     Duplicate,
+    /// A favourite.
+    Favorite,
 }
 
 impl Mark {
-    pub const ALL: [Mark; 4] = [
+    pub const ALL: [Mark; 5] = [
         Self::Edited,
         Self::Incomplete,
         Self::Reviewed,
         Self::Duplicate,
+        Self::Favorite,
     ];
 
     pub fn slug(self) -> &'static str {
@@ -266,6 +306,7 @@ impl Mark {
             Self::Incomplete => "incomplete",
             Self::Reviewed => "reviewed",
             Self::Duplicate => "duplicate",
+            Self::Favorite => "favorite",
         }
     }
 
@@ -382,6 +423,9 @@ pub struct Filters {
     /// Books of any of these series (`Book::series`).
     #[serde(default)]
     pub series: BTreeSet<String>,
+    /// Books in any of these reading states.
+    #[serde(default)]
+    pub states: BTreeSet<ReadState>,
 }
 
 impl Filters {
@@ -391,6 +435,7 @@ impl Filters {
             && self.sources.is_empty()
             && self.folders.is_empty()
             && self.series.is_empty()
+            && self.states.is_empty()
             && self.categories.is_empty()
             && self.languages.is_empty()
             && self.formats.is_empty()

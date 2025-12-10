@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use raft_doc::edits::Field;
-use raft_doc::{Book, Catalog, Filters, Format, Mark, Query, Sort};
+use raft_doc::{Book, Catalog, Filters, Format, Mark, Query, ReadState, Sort};
 use unicode_normalization::UnicodeNormalization;
 
 /// Longest query text considered, in chars.
@@ -264,6 +264,7 @@ enum Skip {
     Source,
     Folder,
     Series,
+    States,
 }
 
 fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
@@ -279,6 +280,12 @@ fn passes(book: &Book, f: &Filters, skip: Skip) -> bool {
     if skip != Skip::Series
         && !f.series.is_empty()
         && !book.series.as_ref().is_some_and(|s| f.series.contains(s))
+    {
+        return false;
+    }
+    if skip != Skip::States
+        && !f.states.is_empty()
+        && !book.status.is_some_and(|st| f.states.contains(&st))
     {
         return false;
     }
@@ -426,6 +433,8 @@ pub struct Facets {
     pub folders: Vec<(String, usize)>,
     /// Books per series (ignoring the series filter), by name.
     pub series: Vec<(String, usize)>,
+    /// Books in each reading state (ignoring the state filter), in `ReadState::ALL` order.
+    pub states: Vec<(ReadState, usize)>,
 }
 
 /// Facet counts for `query`: each facet is counted with every other filter applied.
@@ -441,6 +450,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
     let mut sources: BTreeMap<String, usize> = BTreeMap::new();
     let mut folders: BTreeMap<String, usize> = BTreeMap::new();
     let mut series: BTreeMap<String, usize> = BTreeMap::new();
+    let mut states: BTreeMap<ReadState, usize> = BTreeMap::new();
     let no_years = Filters {
         year_min: None,
         year_max: None,
@@ -480,6 +490,11 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         {
             *series.entry(name.clone()).or_default() += 1;
         }
+        if let Some(st) = b.status
+            && passes(b, f, Skip::States)
+        {
+            *states.entry(st).or_default() += 1;
+        }
         if passes(b, f, Skip::Marks) {
             for m in Mark::ALL.into_iter().filter(|m| b.has(*m)) {
                 *marks.entry(m).or_default() += 1;
@@ -511,6 +526,7 @@ pub fn facets(catalog: &Catalog, index: &Index, query: &Query, content_hits: &[S
         sources: sources.into_iter().collect(),
         folders: folders.into_iter().collect(),
         series: series.into_iter().collect(),
+        states: states.into_iter().collect(),
     }
 }
 
@@ -797,6 +813,40 @@ mod tests {
                 proptest::prop_assert!(b.duplicates.len() < MAX_DUPLICATES);
             }
         }
+    }
+
+    #[test]
+    fn filters_and_counts_states_and_favourites() {
+        let mut c = sample();
+        c.books[0].status = Some(ReadState::Reading);
+        c.books[1].status = Some(ReadState::Read);
+        c.books[2].status = Some(ReadState::Read);
+        c.books[2].favorite = true;
+        let i = Index::new(&c);
+        let mut query = Query::default();
+        let f = facets(&c, &i, &query, &[]);
+        assert_eq!(
+            f.states,
+            vec![(ReadState::Reading, 1), (ReadState::Read, 2)]
+        );
+        assert!(f.marks.contains(&(Mark::Favorite, 1)));
+        query.filters.states.insert(ReadState::Read);
+        assert_eq!(search(&c, &i, &query, &[]).len(), 2);
+        // The state counts ignore their own filter, the others follow it.
+        let f = facets(&c, &i, &query, &[]);
+        assert_eq!(
+            f.states,
+            vec![(ReadState::Reading, 1), (ReadState::Read, 2)]
+        );
+        query.filters.states.insert(ReadState::Reading);
+        assert_eq!(search(&c, &i, &query, &[]).len(), 3);
+        query.filters.marks.insert(Mark::Favorite);
+        assert_eq!(search(&c, &i, &query, &[]), vec![2]);
+        assert_eq!(
+            facets(&c, &i, &query, &[]).states,
+            vec![(ReadState::Read, 1)]
+        );
+        assert!(!query.filters.is_empty());
     }
 
     #[test]

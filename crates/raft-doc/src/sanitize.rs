@@ -47,6 +47,9 @@ pub fn book_from_parts(parts: BookParts) -> Option<Book> {
             .series_index
             .and_then(|n| u32::try_from(n).ok())
             .filter(|n| *n <= MAX_SERIES_INDEX),
+        status: None,
+        favorite: false,
+        rating: 0,
     })
 }
 

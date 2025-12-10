@@ -1,7 +1,7 @@
 //! The command registry: every user-visible action, with its menu, shortcut and params.
 
 use raft_doc::edits::{self, Field};
-use raft_doc::{Format, Mark, Progress, Route, Sort, Source};
+use raft_doc::{Format, Mark, Progress, ReadState, Route, Sort, Source};
 use serde_json::{Value, json};
 
 use crate::params::{opt_bool, opt_f64, opt_i64, opt_str, str};
@@ -208,7 +208,7 @@ static REGISTRY: &[CommandSpec] = &[
         ..spec("filter.format.toggle", "Filtru: format", toggle_format)
     },
     CommandSpec {
-        params: r#"{"mark": "edited"|"incomplete"|"reviewed"}"#,
+        params: r#"{"mark": "edited"|"incomplete"|"reviewed"|"duplicate"|"favorite"}"#,
         ..spec("filter.mark.toggle", "Filtru: marcaj", toggle_mark)
     },
     CommandSpec {
@@ -218,6 +218,10 @@ static REGISTRY: &[CommandSpec] = &[
             "Filtru: câmp lipsă",
             toggle_missing,
         )
+    },
+    CommandSpec {
+        params: r#"{"state": "to_read"|"reading"|"read"|"abandoned"}"#,
+        ..spec("filter.status.toggle", "Filtru: stare", toggle_status)
     },
     CommandSpec {
         params: r#"{"min": int|null, "max": int|null}"#,
@@ -483,6 +487,30 @@ static REGISTRY: &[CommandSpec] = &[
         )
     },
     CommandSpec {
+        params: r#"{"id": string?, "state": "to_read"|"reading"|"read"|"abandoned"|null} (default: current book; null clears it)"#,
+        ..spec("book.status", "Starea cărții", book_status)
+    },
+    CommandSpec {
+        params: r#"{"id": string?, "on": bool?} (default: current book, switch)"#,
+        ..spec("book.favorite", "Preferată", book_favorite)
+    },
+    CommandSpec {
+        params: r#"{"id": string?, "stars": int} (0 to 5; 0 clears the rating)"#,
+        ..spec("book.rating", "Notă", book_rating)
+    },
+    CommandSpec {
+        params: r#"{"ids": [string]?, "state": "to_read"|"reading"|"read"|"abandoned"|null} (default: the selected books)"#,
+        ..spec("books.status", "Starea cărților selectate", books_status)
+    },
+    CommandSpec {
+        params: r#"{"ids": [string]?, "on": bool} (default: the selected books)"#,
+        ..spec(
+            "books.favorite",
+            "Preferate: cărțile selectate",
+            books_favorite,
+        )
+    },
+    CommandSpec {
         params: r#"{"id": string?, "field": string?} (no field: every correction of the book, the reviewed mark stays)"#,
         ..spec(
             "book.edit.reset",
@@ -571,6 +599,14 @@ fn toggle_mark(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let mark = Mark::from_slug(slug)
         .ok_or_else(|| EngineError::BadParams(format!("unknown mark `{slug}`")))?;
     toggle(&mut s.state.query.filters.marks, mark);
+    Ok(Value::Null)
+}
+
+fn toggle_status(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let slug = str(p, "state")?;
+    let state = ReadState::from_slug(slug)
+        .ok_or_else(|| EngineError::BadParams(format!("unknown state `{slug}`")))?;
+    toggle(&mut s.state.query.filters.states, state);
     Ok(Value::Null)
 }
 
@@ -1016,6 +1052,10 @@ fn view_book(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
 
 fn book_read(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
     let id = book_id(s, p)?;
+    // Opening a book of the library with no state makes it one being read.
+    if !s.is_outside(&id) && s.book(&id).is_some_and(|b| b.status.is_none()) {
+        set_value(s, &id, Field::Status, ReadState::Reading.slug());
+    }
     let book = s
         .book(&id)
         .ok_or_else(|| EngineError::NotFound(format!("book `{id}`")))?;
@@ -1209,7 +1249,18 @@ fn canonical(s: &Session, field: Field, v: &Value) -> Result<String, EngineError
     let json_list =
         |items: Vec<String>| serde_json::to_string(&items).map_err(|e| bad(e.to_string()));
     match field {
-        Field::Reviewed | Field::NotDuplicate => match v {
+        Field::Status => canonical_state(v),
+        Field::Rating => {
+            let n = match v {
+                Value::Null => 0,
+                Value::Number(n) => n
+                    .as_i64()
+                    .ok_or_else(|| bad("`rating` must be a whole number"))?,
+                _ => return Err(bad("`rating` must be a number")),
+            };
+            stars(n)
+        }
+        Field::Reviewed | Field::NotDuplicate | Field::Favorite => match v {
             Value::Bool(true) => Ok("1".to_owned()),
             Value::Bool(false) | Value::Null => Ok(String::new()),
             _ => Err(bad(format!("`{}` must be a boolean", field.slug()))),
@@ -1379,15 +1430,112 @@ fn book_not_duplicate(s: &mut Session, p: &Value) -> Result<Value, EngineError> 
 
 /// Sets or clears a hand mark kept with the corrections (`reviewed`, `not_duplicate`).
 fn set_mark(s: &mut Session, id: &str, field: Field, on: bool) {
+    set_value(s, id, field, if on { "1" } else { "" });
+}
+
+/// Sets a mark's canonical value; "" removes it.
+fn set_value(s: &mut Session, id: &str, field: Field, value: &str) {
     let fields = s.state.overrides.entry(id.to_owned()).or_default();
-    if on {
-        fields.insert(field, "1".to_owned());
-    } else {
+    if value.is_empty() {
         fields.remove(&field);
+    } else {
+        fields.insert(field, value.to_owned());
     }
     if fields.is_empty() {
         s.state.overrides.remove(id);
     }
+}
+
+/// The `state` param: a reading state, or null / "" to clear it.
+fn state_param(p: &Value) -> Result<Option<ReadState>, EngineError> {
+    match p.get("state") {
+        None => Err(bad("missing `state` (a state, or null to clear it)")),
+        Some(v) => {
+            let value = canonical_state(v)?;
+            Ok(ReadState::from_slug(&value))
+        }
+    }
+}
+
+fn canonical_state(v: &Value) -> Result<String, EngineError> {
+    match v {
+        Value::Null => Ok(String::new()),
+        Value::String(t) if t.trim().is_empty() => Ok(String::new()),
+        Value::String(t) => ReadState::from_slug(t.trim())
+            .map(|st| st.slug().to_owned())
+            .ok_or_else(|| bad(format!("unknown state `{}`", t.trim()))),
+        _ => Err(bad("`state` must be a state or null")),
+    }
+}
+
+/// Stars as stored: "" for 0, else "1" to "5".
+fn stars(n: i64) -> Result<String, EngineError> {
+    match n {
+        0 => Ok(String::new()),
+        1..=5 => Ok(n.to_string()),
+        _ => Err(bad("`stars` must be between 0 and 5")),
+    }
+}
+
+fn book_status(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = library_book_id(s, p)?;
+    let state = state_param(p)?;
+    set_value(s, &id, Field::Status, state.map_or("", ReadState::slug));
+    Ok(json!({ "status": state.map(ReadState::slug) }))
+}
+
+fn book_favorite(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = library_book_id(s, p)?;
+    let current = s.book(&id).is_some_and(|b| b.favorite);
+    let on = opt_bool(p, "on")?.unwrap_or(!current);
+    set_mark(s, &id, Field::Favorite, on);
+    Ok(json!({ "favorite": on }))
+}
+
+fn book_rating(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let id = library_book_id(s, p)?;
+    let n = opt_i64(p, "stars")?.ok_or_else(|| bad("missing `stars`"))?;
+    let value = stars(n)?;
+    set_value(s, &id, Field::Rating, &value);
+    Ok(json!({ "rating": n }))
+}
+
+/// The `ids` param of a bulk command, or the selected books; only books of the library.
+fn bulk_ids(s: &Session, p: &Value) -> Result<Vec<String>, EngineError> {
+    let ids: Vec<String> = match p.get("ids") {
+        None | Some(Value::Null) => s.selected.iter().cloned().collect(),
+        Some(Value::Array(items)) if items.len() <= MAX_SELECTED => items
+            .iter()
+            .map(|v| v.as_str().map(str::to_owned))
+            .collect::<Option<_>>()
+            .ok_or_else(|| bad("`ids` must be a list of book ids"))?,
+        Some(_) => return Err(bad("`ids` must be a list of book ids")),
+    };
+    if ids.is_empty() {
+        return Err(bad("no books given and none selected"));
+    }
+    if let Some(id) = ids.iter().find(|id| !s.positions.contains_key(id.as_str())) {
+        return Err(EngineError::NotFound(format!("book `{id}` in the library")));
+    }
+    Ok(ids)
+}
+
+fn books_status(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let ids = bulk_ids(s, p)?;
+    let state = state_param(p)?;
+    for id in &ids {
+        set_value(s, id, Field::Status, state.map_or("", ReadState::slug));
+    }
+    Ok(json!({ "changed": ids.len(), "status": state.map(ReadState::slug) }))
+}
+
+fn books_favorite(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let ids = bulk_ids(s, p)?;
+    let on = opt_bool(p, "on")?.ok_or_else(|| bad("missing `on`"))?;
+    for id in &ids {
+        set_mark(s, id, Field::Favorite, on);
+    }
+    Ok(json!({ "changed": ids.len(), "favorite": on }))
 }
 
 fn show_in_folder(s: &mut Session, p: &Value) -> Result<Value, EngineError> {

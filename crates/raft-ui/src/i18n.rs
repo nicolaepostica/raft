@@ -886,6 +886,53 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Альтернативная история, попаданцы",
     ),
     ("Altele", "Other", "Другое"),
+    // G11: reading states, favourites, rating.
+    ("Stare", "Status", "Статус"),
+    ("Stare…", "Status…", "Статус…"),
+    ("Fără stare", "No status", "Без статуса"),
+    ("De citit", "To read", "Прочитать"),
+    ("În lectură", "Reading", "Читаю"),
+    ("Citită", "Read", "Прочитана"),
+    ("Abandonată", "Abandoned", "Брошена"),
+    ("Preferate", "Favourites", "Избранное"),
+    ("Preferată", "Favourite", "В избранном"),
+    ("La preferate", "Add to favourites", "В избранное"),
+    (
+        "Adaugă la preferate",
+        "Add to favourites",
+        "Добавить в избранное",
+    ),
+    (
+        "Scoate din preferate",
+        "Remove from favourites",
+        "Убрать из избранного",
+    ),
+    (
+        "Schimbă starea cărților selectate",
+        "Change the status of the selected books",
+        "Изменить статус выбранных книг",
+    ),
+    ("Starea cărții", "Book status", "Статус книги"),
+    (
+        "Starea cărților selectate",
+        "Status of the selected books",
+        "Статус выбранных книг",
+    ),
+    (
+        "Preferate: cărțile selectate",
+        "Favourites: the selected books",
+        "Избранное: выбранные книги",
+    ),
+    ("Filtru: stare", "Filter: status", "Фильтр: статус"),
+    ("Notă", "Rating", "Оценка"),
+    ("{0} stele", "{0} stars", "Звёзд: {0}"),
+    ("Șterge nota", "Clear the rating", "Убрать оценку"),
+    ("Am terminat-o", "Finished it", "Дочитал"),
+    (
+        "Marchează cartea ca citită",
+        "Mark the book as read",
+        "Отметить книгу как прочитанную",
+    ),
 ];
 
 #[cfg(test)]

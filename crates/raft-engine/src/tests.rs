@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use proptest::prelude::*;
 use raft_doc::edits::{Field, Override};
-use raft_doc::{Book, Catalog, Category, Format, Progress, Route};
+use raft_doc::{Book, Catalog, Category, Format, Progress, ReadState, Route};
 use serde_json::{Value, json};
 
 use crate::{Backend, EngineError, NullBackend, Session, registry};
@@ -1161,4 +1161,91 @@ fn results_come_a_page_at_a_time_for_the_control_channel() {
     assert_eq!(page["books"].as_array().unwrap().len(), 1);
     assert_eq!(page["books"][0]["id"], books[1]["id"]);
     assert_eq!(s.results_page(total, 10)["books"], json!([]));
+}
+
+#[test]
+fn statuses_favourites_and_ratings_filter_persist_and_undo() {
+    let (mut s, rec) = session();
+    // Opening a book with no state makes it one being read; a set state stays.
+    s.run("book.read", &json!({"id": "a"})).unwrap();
+    assert_eq!(s.book("a").unwrap().status, Some(ReadState::Reading));
+    assert!(rec.overrides.lock().unwrap().contains(&(
+        "a".into(),
+        Field::Status,
+        Some("reading".into())
+    )));
+    s.run("book.status", &json!({"id": "b", "state": "to_read"}))
+        .unwrap();
+    s.run("book.read", &json!({"id": "b"})).unwrap();
+    assert_eq!(s.book("b").unwrap().status, Some(ReadState::ToRead));
+    // Not a correction: the book is not "edited" and a reset keeps it.
+    assert!(!s.book("b").unwrap().edited && s.edited_fields("b").is_empty());
+    assert_eq!(
+        s.facets().states,
+        vec![(ReadState::ToRead, 1), (ReadState::Reading, 1)]
+    );
+    s.run("filter.status.toggle", &json!({"state": "reading"}))
+        .unwrap();
+    assert_eq!(s.results().next().map(|b| b.id.as_str()), Some("a"));
+    assert_eq!(s.result_count(), 1);
+    s.run("filter.clear", &json!({})).unwrap();
+
+    s.run("book.favorite", &json!({"id": "b"})).unwrap();
+    s.run("book.rating", &json!({"id": "b", "stars": 4}))
+        .unwrap();
+    let b = s.book("b").unwrap();
+    assert!(b.favorite && b.rating == 4);
+    s.run("filter.mark.toggle", &json!({"mark": "favorite"}))
+        .unwrap();
+    assert_eq!(s.result_count(), 1);
+    s.run("edit.undo", &Value::Null).unwrap();
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert_eq!(s.book("b").unwrap().rating, 0);
+    assert!(
+        rec.overrides
+            .lock()
+            .unwrap()
+            .contains(&("b".into(), Field::Rating, None))
+    );
+
+    // In bulk over the selection, undone in one step.
+    s.run("select.all", &Value::Null).unwrap();
+    let out = s.run("books.status", &json!({"state": "read"})).unwrap();
+    assert_eq!(out["changed"], 2);
+    assert!(
+        ["a", "b"]
+            .iter()
+            .all(|id| s.book(id).unwrap().status == Some(ReadState::Read))
+    );
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert_eq!(s.book("a").unwrap().status, Some(ReadState::Reading));
+    s.run("books.favorite", &json!({"ids": ["a"], "on": true}))
+        .unwrap();
+    assert!(s.book("a").unwrap().favorite);
+    s.run("books.status", &json!({"ids": ["a"], "state": null}))
+        .unwrap();
+    assert_eq!(s.book("a").unwrap().status, None);
+    s.run(
+        "book.edit",
+        &json!({"id": "a", "fields": {"status": "abandoned", "rating": 2}}),
+    )
+    .unwrap();
+    assert_eq!(s.book("a").unwrap().status, Some(ReadState::Abandoned));
+    assert_eq!(s.book("a").unwrap().rating, 2);
+
+    for bad in [
+        ("book.status", json!({"id": "a", "state": "someday"})),
+        ("book.status", json!({"id": "a"})),
+        ("book.rating", json!({"id": "a", "stars": 6})),
+        ("book.rating", json!({"id": "a", "stars": -1})),
+        ("books.status", json!({"ids": ["zzz"], "state": "read"})),
+        ("books.favorite", json!({"ids": ["a"]})),
+        ("filter.status.toggle", json!({"state": "nope"})),
+        (
+            "book.edit",
+            json!({"id": "a", "fields": {"rating": "five"}}),
+        ),
+    ] {
+        assert!(s.run(bad.0, &bad.1).is_err(), "{bad:?}");
+    }
 }

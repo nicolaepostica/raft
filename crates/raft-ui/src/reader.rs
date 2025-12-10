@@ -279,6 +279,7 @@ fn toolbar(app: &mut RaftUi, ui: &mut egui::Ui, book: &raft_doc::Book, page: u32
         ui.separator();
         crate::zoom_controls(app, ui);
         ui.separator();
+        crate::finished_offer(app, ui, book);
         ui.add(egui::Label::new(egui::RichText::new(book.display_title()).strong()).truncate());
     });
 }

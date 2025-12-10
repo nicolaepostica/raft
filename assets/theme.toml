@@ -23,6 +23,14 @@ edited = "#2a64b8"
 incomplete = "#b3541e"
 duplicate = "#7a4fa3"
 
+# Reading states (cover badge, book page), the favourite heart and rating stars.
+status_to_read = "#5b6b7a"
+status_reading = "#1f6f6a"
+status_read = "#3f7d3a"
+status_abandoned = "#8a6d5a"
+favorite = "#c8414b"
+star = "#d99a1b"
+
 # Icon only.
 wood = "#9a6236"
 book_1 = "#f3ead7"
