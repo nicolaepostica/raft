@@ -103,18 +103,30 @@ jobs:
         with:
           name: third-party
           path: dist
+      - name: Packaging tools
+        # rpmbuild for the .rpm (dpkg-deb is already there); the AppImage tools are
+        # downloaded by appimage.sh at pinned versions.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
       - name: Build
         run: cargo build --release --locked -p raft
-      - name: Package
+      - name: Package (.tar.gz, .deb, .rpm)
         run: packaging/linux.sh
+      - name: Package (AppImage)
+        run: packaging/appimage.sh
       - name: Check the packages
-        run: packaging/check.sh dist
+        run: |
+          for ext in tar.gz deb rpm AppImage; do
+            ls dist/*."$ext" >/dev/null || { echo "no .$ext was built" >&2; exit 1; }
+          done
+          packaging/check.sh dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux
           path: |
             dist/*.tar.gz
             dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
           if-no-files-found: error
 
   publish:

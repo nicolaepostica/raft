@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Linux packages from target/release/raft:
-#   dist/raft-<version>-linux-x86_64.tar.gz   and   dist/raft_<version>_amd64.deb
-# Needs dist/THIRD-PARTY.txt (packaging/licences.sh) and dpkg-deb for the .deb.
+#   dist/raft-<version>-linux-x86_64.tar.gz, dist/raft_<version>_amd64.deb and
+#   dist/raft-<version>-1.x86_64.rpm (Fedora, openSUSE, RHEL)
+# Needs dist/THIRD-PARTY.txt (packaging/licences.sh), dpkg-deb for the .deb and rpmbuild
+# (package `rpm` on Ubuntu, `rpm-build` on Fedora) for the .rpm; a missing tool skips its package.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 cd "$ROOT"
@@ -22,19 +24,80 @@ copy_docs "$t"
 tar -C "$work" --owner=0 --group=0 -czf "dist/$name.tar.gz" "$name"
 echo "dist/$name.tar.gz"
 
+# The installed tree, shared by the .deb and the .rpm: $1 = its root.
+stage() {
+    local d=$1
+    install -Dm 755 "$bin" "$d/usr/bin/$APP"
+    install -Dm 755 scripts/build-catalog "$d/usr/lib/$APP/build-catalog"
+    install -Dm 755 scripts/rename-books "$d/usr/lib/$APP/rename-books"
+    ln -s "../lib/$APP/build-catalog" "$d/usr/bin/build-catalog"
+    ln -s "../lib/$APP/rename-books" "$d/usr/bin/rename-books"
+    install -Dm 644 assets/raft.desktop "$d/usr/share/applications/$APP.desktop"
+    install -Dm 644 assets/icon.png "$d/usr/share/icons/hicolor/256x256/apps/$APP.png"
+    copy_docs "$d/usr/share/doc/$APP"
+}
+
+# --- .rpm ---------------------------------------------------------------------
+# Before the .deb, which ends the script when dpkg-deb is missing.
+if command -v rpmbuild >/dev/null; then
+    rpm_version=${VERSION/-/\~}      # 1.0.0~rc.1 sorts before 1.0.0
+    r=$work/rpm
+    stage "$r/root"
+    install -m 644 CHANGELOG.md "$r/root/usr/share/doc/$APP/CHANGELOG.md"
+    cat >"$r/$APP.spec" <<SPEC
+Name: $APP
+Version: $rpm_version
+Release: 1
+Summary: Personal book library with search, filters and a reader
+License: MIT OR Apache-2.0
+URL: https://github.com/nicolaepostica/raft
+BuildArch: x86_64
+# Dependencies are named by hand: the binary is built on Ubuntu (glibc 2.35).
+AutoReqProv: no
+Requires: glibc >= 2.35, libxkbcommon, poppler-utils, djvulibre, python3, python3-pillow
+Recommends: libxkbcommon-x11, libwayland-client, mesa-libEGL, vulkan-loader, glib2, zenity
+Suggests: tesseract, tesseract-langpack-rus
+%global debug_package %{nil}
+%global __os_install_post %{nil}
+
+%description
+Raft shows a folder of PDF, DjVu, EPUB and FB2 books as a searchable library:
+full-text search, filters by language, format, year, category, series and
+folder, reading progress, hand corrections of the metadata, and readers for
+every format. build-catalog makes the folder's catalog.
+
+%install
+cp -a $r/root/. %{buildroot}/
+
+%files
+/usr/bin/$APP
+/usr/bin/build-catalog
+/usr/bin/rename-books
+/usr/lib/$APP
+/usr/share/applications/$APP.desktop
+/usr/share/icons/hicolor/256x256/apps/$APP.png
+%dir /usr/share/doc/$APP
+%license /usr/share/doc/$APP/LICENSE-MIT
+%license /usr/share/doc/$APP/LICENSE-APACHE
+%license /usr/share/doc/$APP/NOTICE
+%license /usr/share/doc/$APP/THIRD-PARTY.txt
+%doc /usr/share/doc/$APP/CHANGELOG.md
+SPEC
+    rpmbuild -bb --quiet --define "_topdir $r/top" --define "_rpmdir $ROOT/dist" \
+        --define "source_date_epoch_from_changelog 0" \
+        --define "_build_name_fmt %%{NAME}-%%{VERSION}-%%{RELEASE}.%%{ARCH}.rpm" \
+        "$r/$APP.spec"
+    echo "dist/$APP-$rpm_version-1.x86_64.rpm"
+else
+    echo "no rpmbuild: skipping the .rpm" >&2
+fi
+
 # --- .deb ---------------------------------------------------------------------
 command -v dpkg-deb >/dev/null || { echo "no dpkg-deb: skipping the .deb" >&2; exit 0; }
 deb_version=${VERSION/-/\~}          # 1.0.0-rc.1 sorts before 1.0.0
 d=$work/deb
-install -Dm 755 "$bin" "$d/usr/bin/$APP"
-install -Dm 755 scripts/build-catalog "$d/usr/lib/$APP/build-catalog"
-install -Dm 755 scripts/rename-books "$d/usr/lib/$APP/rename-books"
-ln -s "../lib/$APP/build-catalog" "$d/usr/bin/build-catalog"
-ln -s "../lib/$APP/rename-books" "$d/usr/bin/rename-books"
-install -Dm 644 assets/raft.desktop "$d/usr/share/applications/$APP.desktop"
-install -Dm 644 assets/icon.png "$d/usr/share/icons/hicolor/256x256/apps/$APP.png"
+stage "$d"
 doc=$d/usr/share/doc/$APP
-copy_docs "$doc"
 gzip -9n -c CHANGELOG.md >"$doc/changelog.gz"
 {
     echo "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/"

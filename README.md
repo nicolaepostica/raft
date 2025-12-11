@@ -63,6 +63,8 @@ Linux x86_64, from [Releases](../../releases):
 
 ```
 raft_<version>_amd64.deb                 Ubuntu 22.04+, Debian 12+
+raft-<version>-1.x86_64.rpm              Fedora 36+, RHEL 10, openSUSE Tumbleweed
+raft-<version>-x86_64.AppImage           any distribution with glibc 2.35+
 raft-<version>-linux-x86_64.tar.gz       any distribution with glibc 2.35+
 SHA256SUMS.txt
 ```
@@ -70,6 +72,11 @@ SHA256SUMS.txt
 - **.deb:** `sudo apt install ./raft_<version>_amd64.deb` installs `raft`, `build-catalog`,
   `rename-books`, the menu entry and the icon, and pulls in poppler-utils, djvulibre and
   Python with Pillow.
+- **.rpm:** `sudo dnf install ./raft-<version>-1.x86_64.rpm`: the same files, and it pulls
+  in poppler-utils, djvulibre and python3-pillow.
+- **AppImage:** `chmod +x raft-<version>-x86_64.AppImage` and run it (needs FUSE 2, or
+  `--appimage-extract-and-run`); `poppler-utils`, `djvulibre` and `python3-pillow` come from
+  the distribution, as for the .tar.gz.
 - **.tar.gz:** unpack it anywhere and run `./raft`; `build-catalog` and `rename-books` are
   next to it. Install `poppler-utils`, `djvulibre` and `python3-pillow` from the
   distribution. `raft.desktop` and `raft.png` go to `~/.local/share/applications/` and

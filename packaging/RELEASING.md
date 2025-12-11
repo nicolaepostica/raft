@@ -31,16 +31,20 @@ The version lives in one place, `[workspace.package]` in `Cargo.toml`
 
 ## Packages
 
-`packaging/linux.sh` (after `cargo build --release -p raft` and `packaging/licences.sh`):
+`packaging/linux.sh` and `packaging/appimage.sh` (after `cargo build --release -p raft` and
+`packaging/licences.sh`):
 
 | File | What |
 |---|---|
 | `raft-X.Y.Z-linux-x86_64.tar.gz` | `raft`, `build-catalog`, `rename-books`, desktop entry, icon, licences |
 | `raft_X.Y.Z_amd64.deb` | the same, installed in `/usr` (Ubuntu 22.04+, Debian 12+) |
+| `raft-X.Y.Z-1.x86_64.rpm` | the same, for Fedora / RHEL / openSUSE (`rpmbuild`; package `rpm` on Ubuntu, `rpm-build` on Fedora); dependencies named by hand (`AutoReqProv: no`) |
+| `raft-X.Y.Z-x86_64.AppImage` | the same in one file (appimagetool 1.9.1 and type2-runtime 20251108, pinned by sha256 in `appimage.sh`, cached in `target/appimage-tools/`) |
 | `SHA256SUMS.txt` | checksums (made by the workflow) |
 
-Built on Ubuntu 22.04 (glibc 2.35). `packaging/check.sh dist` opens each package and fails
-when a file is missing.
+Built on Ubuntu 22.04 (glibc 2.35). `packaging/check.sh dist` opens each package (tar.gz,
+.deb, .rpm, AppImage) and fails when a file is missing; the workflow also fails when one of the
+four was not built. A missing `dpkg-deb` or `rpmbuild` only skips that package locally.
 
 ## Licences
 
