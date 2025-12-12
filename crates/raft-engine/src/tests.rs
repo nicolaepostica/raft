@@ -953,6 +953,27 @@ fn duplicates_are_found_corrected_and_dismissed() {
     s.run("edit.undo", &Value::Null).unwrap();
     assert!(s.book("a").is_some_and(|b| !b.not_duplicate));
     assert_eq!(s.result_count(), 2);
+    // Many at once, from the selection, in one undo step.
+    s.run("select.all", &Value::Null).unwrap();
+    let out = s.run("books.not_duplicate", &json!({})).unwrap();
+    assert_eq!(out["changed"], 2);
+    assert_eq!(s.result_count(), 0);
+    assert!(
+        ["a", "b"]
+            .iter()
+            .all(|id| s.book(id).unwrap().not_duplicate)
+    );
+    s.run("edit.undo", &Value::Null).unwrap();
+    assert_eq!(s.result_count(), 2);
+    s.run("books.not_duplicate", &json!({"ids": ["b"]}))
+        .unwrap();
+    s.run("books.not_duplicate", &json!({"ids": ["b"], "on": false}))
+        .unwrap();
+    assert!(!s.book("b").unwrap().not_duplicate);
+    assert!(
+        s.run("books.not_duplicate", &json!({"ids": ["zzz"]}))
+            .is_err()
+    );
 }
 
 #[test]

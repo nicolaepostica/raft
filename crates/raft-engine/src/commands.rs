@@ -511,6 +511,14 @@ static REGISTRY: &[CommandSpec] = &[
         )
     },
     CommandSpec {
+        params: r#"{"ids": [string]?, "on": bool?} (default: the selected books, on)"#,
+        ..spec(
+            "books.not_duplicate",
+            "Marchează: nu sunt dubluri",
+            books_not_duplicate,
+        )
+    },
+    CommandSpec {
         params: r#"{"id": string?, "field": string?} (no field: every correction of the book, the reviewed mark stays)"#,
         ..spec(
             "book.edit.reset",
@@ -1527,6 +1535,15 @@ fn books_status(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
         set_value(s, id, Field::Status, state.map_or("", ReadState::slug));
     }
     Ok(json!({ "changed": ids.len(), "status": state.map(ReadState::slug) }))
+}
+
+fn books_not_duplicate(s: &mut Session, p: &Value) -> Result<Value, EngineError> {
+    let ids = bulk_ids(s, p)?;
+    let on = opt_bool(p, "on")?.unwrap_or(true);
+    for id in &ids {
+        set_mark(s, id, Field::NotDuplicate, on);
+    }
+    Ok(json!({ "changed": ids.len(), "not_duplicate": on }))
 }
 
 fn books_favorite(s: &mut Session, p: &Value) -> Result<Value, EngineError> {

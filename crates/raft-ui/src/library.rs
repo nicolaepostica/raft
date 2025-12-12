@@ -649,6 +649,27 @@ fn selection_bar(app: &mut RaftUi, ui: &mut egui::Ui, results: usize) {
                 if ui.button(t("Scoate din preferate")).clicked() {
                     app.act("books.favorite", json!({ "on": false }));
                 }
+                // Copies seen by their covers to be different books: out of the duplicates.
+                let doubles = app
+                    .session
+                    .selected()
+                    .iter()
+                    .filter(|id| {
+                        app.session
+                            .book(id)
+                            .is_some_and(|b| !b.duplicates.is_empty())
+                    })
+                    .count();
+                if doubles > 0
+                    && ui
+                        .button(tf("Nu sunt dubluri ({0})", &[&doubles]))
+                        .on_hover_text(t(
+                            "Cărțile selectate nu mai apar la „dubluri posibile” (se poate anula)",
+                        ))
+                        .clicked()
+                {
+                    app.act("books.not_duplicate", json!({ "on": true }));
+                }
                 ui.separator();
                 let delete = egui::Button::new(
                     egui::RichText::new(tf("Mută în coș ({0})", &[&n]))

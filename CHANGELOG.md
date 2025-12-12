@@ -13,6 +13,7 @@ the commit its tag points to.
   books at once; filter by state and favourites (with counts); a badge and a heart on the
   cover. Opening a book marks it as being read; at the end of a book the reader offers to mark
   it as read.
+- **Duplicates:** tick several books and mark them as not duplicates at once.
 - **Packages:** an `.rpm` (Fedora, RHEL, openSUSE) and an AppImage next to the `.deb` and
   the `.tar.gz`.
 

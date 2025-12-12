@@ -1118,3 +1118,42 @@ fn the_reader_offers_to_mark_a_finished_book_as_read() {
     );
     assert!(h.query_by_label_contains("Am terminat-o").is_none());
 }
+
+#[test]
+fn ticked_duplicates_are_dismissed_together() {
+    let mut catalog = app().session.catalog().clone();
+    for b in &mut catalog.books {
+        b.isbn = Some("978-0-306-40615-7".into());
+    }
+    let ui = RaftUi::new(
+        Session::new(catalog, vec![], Box::new(NullBackend)),
+        Box::new(NoFiles),
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 750.0))
+        .build_ui_state(|ui, app: &mut RaftUi| app.show(ui), ui);
+    h.run();
+    h.get_by_label("Dubluri posibile  (2)").click();
+    h.run();
+    h.get_by_label("Selectează: Rust in Action").click();
+    h.run();
+    h.get_by_label("Selectează toate (2)").click();
+    h.run();
+    h.get_by_label("Nu sunt dubluri (2)").click();
+    h.run();
+    assert_eq!(h.state().session.result_count(), 0);
+    assert!(
+        h.state()
+            .session
+            .catalog()
+            .books
+            .iter()
+            .all(|b| b.not_duplicate && b.duplicates.is_empty())
+    );
+    // One step back brings both back.
+    h.state_mut()
+        .run("edit.undo", serde_json::json!({}))
+        .unwrap();
+    h.run();
+    assert_eq!(h.state().session.result_count(), 2);
+}

@@ -886,6 +886,22 @@ pub const TABLE: &[(&str, &str, &str)] = &[
         "Альтернативная история, попаданцы",
     ),
     ("Altele", "Other", "Другое"),
+    // G84: many books out of the duplicates at once.
+    (
+        "Nu sunt dubluri ({0})",
+        "Not duplicates ({0})",
+        "Не дубли ({0})",
+    ),
+    (
+        "Cărțile selectate nu mai apar la „dubluri posibile” (se poate anula)",
+        "The selected books leave “possible duplicates” (can be undone)",
+        "Выбранные книги больше не попадут в «возможные дубли» (можно отменить)",
+    ),
+    (
+        "Marchează: nu sunt dubluri",
+        "Mark: not duplicates",
+        "Отметить: не дубли",
+    ),
     // G11: reading states, favourites, rating.
     ("Stare", "Status", "Статус"),
     ("Stare…", "Status…", "Статус…"),
